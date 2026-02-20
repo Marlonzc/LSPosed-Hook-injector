@@ -5,19 +5,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: set up JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with: { java-version: '17', distribution: 'temurin' }
-      
+
+      # 如果你没建文件夹，脚本在这里强行帮你建好并塞入心脏文件
+      - name: Force Create Project Structure
+        run: |
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/java/com/loader/stealth
+          
+          # 强行生成 AndroidManifest.xml
+          cat <<EOF > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.loader.stealth">
+              <application android:hasCode="true" />
+          </manifest>
+          EOF
+
+          # 强行生成关键的 settings.gradle
+          echo "include ':app'" > settings.gradle
+
       - name: Build with Gradle
         run: |
           chmod +x gradlew || true
-          # 加上 --info 参数，这样如果它跳过了编译，日志里会写明原因
-          ./gradlew assembleRelease --info || gradle assembleRelease --info
+          # 使用 --debug 模式，如果这次还敢 10 秒结束，日志会详细交待它到底在搞什么鬼
+          ./gradlew assembleRelease --stacktrace --debug || gradle assembleRelease --stacktrace --debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with: 
-          name: StealthModule
-          # 暴力查找所有生成的 APK，不管它在哪
+          name: StealthModule-Final
           path: "**/*.apk"
