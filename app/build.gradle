@@ -1,0 +1,20 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.loader.stealth'
+    compileSdk 33
+    defaultConfig {
+        applicationId "com.loader.stealth"
+        minSdk 26
+        targetSdk 33
+        versionCode 1
+        versionName "1.0"
+        externalNativeBuild { cmake { cppFlags "" } }
+    }
+    buildTypes { release { minifyEnabled false } }
+    externalNativeBuild { cmake { path "src/main/cpp/CMakeLists.txt" } }
+}
+
+dependencies {
+    compileOnly 'org.lsposed.lsposed:api:1.0.0'
+}
