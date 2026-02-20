@@ -5,23 +5,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup JDK 17
+      - name: set up JDK 17
         uses: actions/setup-java@v4
         with: { java-version: '17', distribution: 'temurin' }
       
-      # 接受 Android 所有协议，防止因为“未授权”导致的 exit code 1
-      - name: Accept Licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: Build and Catch Error
+      - name: Build with Gradle
         run: |
           chmod +x gradlew || true
-          # 这一步是关键：如果编译失败，它会直接把带 "error" 的行打印出来
-          ./gradlew assembleRelease --stacktrace > build_log.txt 2>&1 || (grep -i "error" build_log.txt && exit 1)
-          
+          # 加上 --info 参数，这样如果它跳过了编译，日志里会写明原因
+          ./gradlew assembleRelease --info || gradle assembleRelease --info
+
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with: 
           name: StealthModule
+          # 暴力查找所有生成的 APK，不管它在哪
           path: "**/*.apk"
