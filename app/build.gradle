@@ -9,7 +9,6 @@ android {
         targetSdk 33
         versionCode 1
         versionName "1.0"
-        externalNativeBuild { cmake { cppFlags "" } }
     }
     buildTypes {
         release {
@@ -17,7 +16,6 @@ android {
             signingConfig signingConfigs.debug
         }
     }
-    externalNativeBuild { cmake { path "src/main/cpp/CMakeLists.txt" } }
 }
 
 dependencies {
