@@ -9,13 +9,11 @@ jobs:
         uses: actions/setup-java@v4
         with: { java-version: '17', distribution: 'temurin' }
 
-      # 如果你没建文件夹，脚本在这里强行帮你建好并塞入心脏文件
-      - name: Force Create Project Structure
+      # 关键：手动强行生成你缺失的 Android 骨架文件
+      - name: Force Project Heartbeat
         run: |
-          mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/java/com/loader/stealth
-          
-          # 强行生成 AndroidManifest.xml
+          mkdir -p app/src/main
+          echo "include ':app'" > settings.gradle
           cat <<EOF > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.loader.stealth">
@@ -23,15 +21,17 @@ jobs:
           </manifest>
           EOF
 
-          # 强行生成关键的 settings.gradle
-          echo "include ':app'" > settings.gradle
-
       - name: Build with Gradle
         run: |
           chmod +x gradlew || true
-          # 使用 --debug 模式，如果这次还敢 10 秒结束，日志会详细交待它到底在搞什么鬼
-          ./gradlew assembleRelease --stacktrace --debug || gradle assembleRelease --stacktrace --debug
+          # 禁用损坏的 GitHub 缓存服务
+          ./gradlew assembleRelease --no-build-cache --stacktrace || gradle assembleRelease --no-build-cache
 
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with: 
+          name: StealthModule-Final
+          path: "**/*.apk"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with: 
