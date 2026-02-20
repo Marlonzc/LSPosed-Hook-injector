@@ -9,18 +9,17 @@ jobs:
         uses: actions/setup-java@v4
         with: { java-version: '17', distribution: 'temurin' }
       
-      # 绕过 GitHub 缓存，直接安装构建工具
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-      # 暴力运行：如果 gradlew 坏了，直接用系统 gradle 编
       - name: Build with Gradle
-        run: |
-          chmod +x gradlew || true
-          ./gradlew assembleRelease --stacktrace || gradle assembleRelease --stacktrace
+        run: gradle assembleRelease --stacktrace
+
+      - name: Show Built Files
+        run: find . -name "*.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with: 
           name: StealthModule
-          path: "**/build/outputs/apk/release/*.apk"
+          path: "**/*.apk" # 暴力搜索所有生成的 APK
