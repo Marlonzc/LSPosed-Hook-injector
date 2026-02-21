@@ -12,6 +12,7 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://jitpack.io' }
         // 必须加上这个，否则找不到你注入需要的 API
         maven { url 'https://maven.lsposed.org/releases/' }
     }
