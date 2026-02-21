@@ -40,7 +40,14 @@ public class FloatingPanel {
     );
 
     public static void show(final Activity activity) {
+        // prevent duplicates
+        ViewGroup decor = activity.findViewById(android.R.id.content);
+        if (decor != null && decor.findViewWithTag("FloatingPanelTag") != null) {
+            return;
+        }
+
         final FrameLayout root = new FrameLayout(activity);
+        root.setTag("FloatingPanelTag");
         FrameLayout.LayoutParams rootParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -190,7 +197,8 @@ public class FloatingPanel {
         });
 
         // Show the panel
-        activity.addContentView(root, rootParams);
+        ViewGroup target = decor != null ? decor : (ViewGroup) activity.getWindow().getDecorView();
+        target.addView(root, rootParams);
     }
 
     private static List<String> findSoFiles() {
