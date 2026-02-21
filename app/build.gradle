@@ -1,3 +1,6 @@
+// Updated build.gradle file
+
 dependencies {
-    implementation 'io.github.libxposed:api:100.0'
+    implementation 'de.robv.android.xposed:api:82'
+    // Other dependencies...
 }
