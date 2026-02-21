@@ -11,6 +11,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -89,6 +90,21 @@ public class FloatingPanel {
         pickBtn.setAllCaps(false);
         pickBtn.setTextColor(Color.WHITE);
         pickBtn.setBackgroundColor(Color.parseColor("#455A8E"));
+
+        // Manual path input (kept for flexibility)
+        final EditText pathInput = new EditText(activity);
+        pathInput.setHint(DEFAULT_PATH);
+        pathInput.setText(DEFAULT_PATH);
+        pathInput.setTextColor(Color.parseColor("#C8FACC"));
+        pathInput.setHintTextColor(Color.parseColor("#88C6A0"));
+        pathInput.setTextSize(12);
+        pathInput.setSingleLine(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, 0, 0, 12);
+        pathInput.setLayoutParams(lp);
+
         pickBtn.setOnClickListener(v -> {
             List<String> found = findSoFiles();
             if (found.isEmpty()) {
@@ -112,25 +128,19 @@ public class FloatingPanel {
         rowTop.addView(pickBtn);
         layout.addView(rowTop);
 
-        // Manual path input (kept for flexibility)
-        final EditText pathInput = new EditText(activity);
-        pathInput.setHint(DEFAULT_PATH);
-        pathInput.setText(DEFAULT_PATH);
-        pathInput.setTextColor(Color.parseColor("#C8FACC"));
-        pathInput.setHintTextColor(Color.parseColor("#88C6A0"));
-        pathInput.setTextSize(12);
-        pathInput.setSingleLine(true);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 0, 0, 12);
-        pathInput.setLayoutParams(lp);
-        layout.addView(pathInput);
-
-        // Inject button row
+        // Inject options row: checkbox + button
         LinearLayout rowBottom = new LinearLayout(activity);
         rowBottom.setOrientation(LinearLayout.HORIZONTAL);
         rowBottom.setGravity(Gravity.CENTER_VERTICAL);
+
+        CheckBox selinuxToggle = new CheckBox(activity);
+        selinuxToggle.setText("允许切换 SELinux（仅在失败时）");
+        selinuxToggle.setTextColor(Color.parseColor("#C8FACC"));
+        selinuxToggle.setChecked(true);
+        LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cbLp.setMargins(0, 0, 12, 0);
+        selinuxToggle.setLayoutParams(cbLp);
+        rowBottom.addView(selinuxToggle);
 
         Button btn = new Button(activity);
         btn.setText("注入");
@@ -145,13 +155,14 @@ public class FloatingPanel {
             }
             if (path == null || path.isEmpty()) path = DEFAULT_PATH;
             v.setEnabled(false);
-            inject(activity, layout, path, v);
+            inject(activity, layout, path, v, selinuxToggle.isChecked());
         });
 
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         rowBottom.addView(btn, btnLp);
+        layout.addView(pathInput);
         layout.addView(rowBottom);
 
         root.addView(layout);
@@ -185,7 +196,7 @@ public class FloatingPanel {
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
                 Color.parseColor("#9CFFA8"
-
+                )
         };
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
@@ -225,31 +236,41 @@ public class FloatingPanel {
         return found;
     }
 
-    private static void inject(Activity act, View layout, String path, View trigger) {
+    private static void inject(Activity act, View layout, String path, View trigger, boolean allowSelinuxSwitch) {
         String prevState = null;
         boolean disabledSelinux = false;
         try {
-            prevState = getSelinuxState();
-            // 强制关闭 selinux（需要 root/su）
-            if (!"permissive".equalsIgnoreCase(prevState)) {
-                if (setSelinuxState("0")) {
-                    disabledSelinux = true;
-                } else {
-                    Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
-                }
-            }
-
+            // First attempt: no SELinux change
             byte[] bytes = loadSoBytes(act, path);
             String res = NativeLoader.memfdInject(bytes);
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
             if ("SUCCESS".equals(res)) {
                 new File(path).delete();
                 removePanel(act, layout);
+                return;
+            }
+
+            // Second attempt only if allowed
+            if (allowSelinuxSwitch) {
+                prevState = getSelinuxState();
+                if (!"permissive".equalsIgnoreCase(prevState)) {
+                    if (setSelinuxState("0")) {
+                        disabledSelinux = true;
+                    } else {
+                        Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
+                    }
+                }
+                res = NativeLoader.memfdInject(bytes);
+                Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
+                if ("SUCCESS".equals(res)) {
+                    new File(path).delete();
+                    removePanel(act, layout);
+                    return;
+                }
             }
         } catch (Exception e) {
             Toast.makeText(act, "失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         } finally {
-            // 注入后恢复 SELinux
             if (disabledSelinux && prevState != null && !prevState.isEmpty()) {
                 setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
             }
@@ -258,7 +279,6 @@ public class FloatingPanel {
     }
 
     private static boolean setSelinuxState(String state) {
-        // state: "0" permissive, "1" enforcing
         return runShell("su", "-c", "setenforce " + state)
                 || runShell("setenforce " + state);
     }
@@ -315,12 +335,10 @@ public class FloatingPanel {
             lastError = new FileNotFoundException("文件不存在或为空: " + path);
         }
 
-        // Fallback to assets using filename
         String assetName = file.getName();
         try (InputStream is = ctx.getAssets().open(assetName)) {
             return readAllBytes(is, -1);
         } catch (IOException ignored) {
-            // ignore and throw previous error below
         }
 
         if (lastError != null) throw lastError;
