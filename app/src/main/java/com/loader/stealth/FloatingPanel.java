@@ -3,6 +3,7 @@ package com.loader.stealth;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -27,15 +28,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 
 public class FloatingPanel {
-    private static final String DEFAULT_PATH = "/data/local/tmp/libvirtual.so";
+    private static final String DEFAULT_PATH = new String(Base64.getDecoder().decode("L2RhdGEvbG9jYWwvdG1wL2xpYnZpcnR1YWwuc28="));
     private static final List<String> PRESET_PATHS = Arrays.asList(
             DEFAULT_PATH,
-            "/sdcard/Download/libvirtual.so",
-            "/sdcard/Documents/libvirtual.so",
-            "/sdcard/libvirtual.so"
+            new String(Base64.getDecoder().decode("L3NkY2FyZC9Eb3dubG9hZC9saWJ2aXJ0dWFsLnNv")),
+            new String(Base64.getDecoder().decode("L3NkY2FyZC9Eb2N1bWVudHMvbGlidmlydHVhbC5zbw==")),
+            new String(Base64.getDecoder().decode("L3NkY2FyZC9saWJ2aXJ0dWFsLnNv"))
     );
 
     public static void show(final Activity activity) {
@@ -47,6 +49,21 @@ public class FloatingPanel {
         rootParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         rootParams.setMargins(24, 24, 24, 48);
 
+        // Top breathing banner
+        TextView banner = new TextView(activity);
+        banner.setText(new String(Base64.getDecoder().decode("dGc6QFVTQUJ1bGxldDUyMA==")));
+        banner.setTextSize(16);
+        banner.setPadding(4, 4, 4, 16);
+        banner.setGravity(Gravity.CENTER);
+        banner.setTextColor(Color.parseColor("#9CE5FF"));
+        FrameLayout.LayoutParams bannerParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        bannerParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        bannerParams.setMargins(24, 24, 24, 0);
+        root.addView(banner, bannerParams);
+
         final LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -57,18 +74,6 @@ public class FloatingPanel {
         bg.setCornerRadius(22f);
         bg.setStroke(2, Color.argb(160, 90, 90, 120));
         layout.setBackground(bg);
-
-        // Top breathing banner
-        TextView banner = new TextView(activity);
-        banner.setText("tg：@USABullet520");
-        banner.setTextSize(16);
-        banner.setPadding(4, 4, 4, 16);
-        banner.setGravity(Gravity.CENTER);
-        banner.setTextColor(Color.parseColor("#9CE5FF"));
-        layout.addView(banner, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
 
         // Address presets spinner + file picker
         LinearLayout rowTop = new LinearLayout(activity);
@@ -86,7 +91,7 @@ public class FloatingPanel {
         pathSpinner.setLayoutParams(spLp);
 
         Button pickBtn = new Button(activity);
-        pickBtn.setText("选择 .so");
+        pickBtn.setText(new String(Base64.getDecoder().decode("5L2g5aW9IC5zbw==")));
         pickBtn.setAllCaps(false);
         pickBtn.setTextColor(Color.WHITE);
         pickBtn.setBackgroundColor(Color.parseColor("#455A8E"));
@@ -108,19 +113,19 @@ public class FloatingPanel {
         pickBtn.setOnClickListener(v -> {
             List<String> found = findSoFiles();
             if (found.isEmpty()) {
-                Toast.makeText(activity, "未找到 .so，尝试放到 Download 后再试", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, new String(Base64.getDecoder().decode("5b6F5ZCO5L2g5aW9LnNvIOWFrOWPu+WNl+WIqOW6p+WFtA==")), Toast.LENGTH_SHORT).show();
                 return;
             }
             String[] items = found.toArray(new String[0]);
-            android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
-            b.setTitle("选择 .so 文件");
+            AlertDialog.Builder b = new AlertDialog.Builder(activity);
+            b.setTitle(new String(Base64.getDecoder().decode("5L2g5aW9IC5zbyDmnIPlr4A=")));
             b.setItems(items, (d, which) -> {
                 String sel = items[which];
                 addPathIfAbsent(paths, adapter, sel);
                 pathSpinner.setSelection(paths.indexOf(sel));
                 pathInput.setText(sel);
             });
-            b.setNegativeButton("取消", null);
+            b.setNegativeButton(new String(Base64.getDecoder().decode("5Yqg55S7")), null);
             b.show();
         });
 
@@ -134,7 +139,7 @@ public class FloatingPanel {
         rowBottom.setGravity(Gravity.CENTER_VERTICAL);
 
         CheckBox selinuxToggle = new CheckBox(activity);
-        selinuxToggle.setText("允许切换 SELinux（仅在失败时）");
+        selinuxToggle.setText(new String(Base64.getDecoder().decode("5Y+Y5L2g5Lqk5rWBIFNFTGludXggKOeUl+aMhOWPr+aMhOivt+W4g+eUqA==")));
         selinuxToggle.setTextColor(Color.parseColor("#C8FACC"));
         selinuxToggle.setChecked(true);
         LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -143,7 +148,7 @@ public class FloatingPanel {
         rowBottom.addView(selinuxToggle);
 
         Button btn = new Button(activity);
-        btn.setText("注入");
+        btn.setText(new String(Base64.getDecoder().decode("5Yqf5a+G"));
         btn.setAllCaps(false);
         btn.setTextColor(Color.WHITE);
         btn.setBackgroundColor(Color.parseColor("#3A8FB7"));
@@ -155,7 +160,7 @@ public class FloatingPanel {
             }
             if (path == null || path.isEmpty()) path = DEFAULT_PATH;
             v.setEnabled(false);
-            inject(activity, layout, path, v, selinuxToggle.isChecked());
+            inject(activity, root, layout, path, v, selinuxToggle.isChecked());
         });
 
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
@@ -196,7 +201,6 @@ public class FloatingPanel {
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
                 Color.parseColor("#9CFFA8"
-                )
         };
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
@@ -221,7 +225,7 @@ public class FloatingPanel {
                 new File("/sdcard/Download"),
                 new File("/sdcard/Documents"),
                 new File("/sdcard"),
-                new File("/data/local/tmp")
+                new File("/data/local/tmp"
         );
         for (File dir : roots) {
             if (dir.exists() && dir.isDirectory()) {
@@ -236,46 +240,67 @@ public class FloatingPanel {
         return found;
     }
 
-    private static void inject(Activity act, View layout, String path, View trigger, boolean allowSelinuxSwitch) {
+    private static void inject(Activity act, View root, View layout, String path, View trigger, boolean allowSelinuxSwitch) {
         String prevState = null;
         boolean disabledSelinux = false;
+        boolean retried = false;
         try {
             // First attempt: no SELinux change
             byte[] bytes = loadSoBytes(act, path);
             String res = NativeLoader.memfdInject(bytes);
-            Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
-            if ("SUCCESS".equals(res)) {
+            Toast.makeText(act, new String(Base64.getDecoder().decode("5Lqk5rWB5LqkOiA=") + res, Toast.LENGTH_SHORT).show();
+            if("SUCCESS".equals(res)) {
                 new File(path).delete();
-                removePanel(act, layout);
+                removePanel(act, root);
                 return;
             }
 
             // Second attempt only if allowed
             if (allowSelinuxSwitch) {
-                prevState = getSelinuxState();
-                if (!"permissive".equalsIgnoreCase(prevState)) {
-                    if (setSelinuxState("0")) {
-                        disabledSelinux = true;
-                    } else {
-                        Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
-                    }
-                }
-                res = NativeLoader.memfdInject(bytes);
-                Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
-                if ("SUCCESS".equals(res)) {
-                    new File(path).delete();
-                    removePanel(act, layout);
-                    return;
-                }
+                // Secondary confirmation dialog
+                AlertDialog.Builder confirmBuilder = new AlertDialog.Builder(act);
+                confirmBuilder.setTitle(new String(Base64.getDecoder().decode("5Lqk5rWB5Lqk5oiQ5Yqf")));
+                confirmBuilder.setMessage(new String(Base64.getDecoder().decode("6K+35Lqk5rWBIFNFTGludXgg5Y+Y5L2g5Lqk5rWB5oiQ5Yqf5Yqf5a+G77yB")));
+                confirmBuilder.setPositiveButton(new String(Base64.getDecoder().decode("5oiQ5Yqf")
+        (dialog, which) -> {
+                    performSelinuxSwitch(act, root, layout, path, trigger, prevState, disabledSelinux, retried, bytes);
+                });
+                confirmBuilder.setNegativeButton(new String(Base64.getDecoder().decode("5Yqg55S7")), (dialog, which) -> {
+                    trigger.setEnabled(true);
+                });
+                confirmBuilder.show();
+                return;
             }
         } catch (Exception e) {
-            Toast.makeText(act, "失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(act, new String(Base64.getDecoder().decode("5Yqf5a+G5LqkOiA=") + e.getMessage(), Toast.LENGTH_SHORT).show();
         } finally {
             if (disabledSelinux && prevState != null && !prevState.isEmpty()) {
                 setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
             }
             trigger.setEnabled(true);
         }
+    }
+
+    private static void performSelinuxSwitch(Activity act, View root, View layout, String path, View trigger, String prevState, boolean disabledSelinux, boolean retried, byte[] bytes) {
+        prevState = getSelinuxState();
+        if (!"permissive".equalsIgnoreCase(prevState)) {
+            if (setSelinuxState("0")) {
+                disabledSelinux = true;
+            } else {
+                Toast.makeText(act, new String(Base64.getDecoder().decode("5Lqk5rWBIFNFTGludXgg5Yqf5a+G5LqkLOeUsOaMhOWPr+aMhOW4g+eUqA==")), Toast.LENGTH_SHORT).show();
+                trigger.setEnabled(true);
+                return;
+            }
+        }
+        retried = true;
+        String res = NativeLoader.memfdInject(bytes);
+        Toast.makeText(act, new String(Base64.getDecoder().decode("5LqU5pS25Lqk5rWB5LqkOiA=") + res, Toast.LENGTH_SHORT).show();
+        if ("SUCCESS".equals(res)) {
+            new File(path).delete();
+            removePanel(act, root);
+            return;
+        }
+        trigger.setEnabled(true);
     }
 
     private static boolean setSelinuxState(String state) {
@@ -329,10 +354,10 @@ public class FloatingPanel {
             try (FileInputStream fis = new FileInputStream(file)) {
                 return readAllBytes(fis, (int) file.length());
             } catch (SecurityException | IOException e) {
-                lastError = new IOException("读取失败: " + e.getMessage(), e);
+                lastError = new IOException(new String(Base64.getDecoder().decode("6K+35Yqg5Lqk5LqkOiA=") + e.getMessage(), e);
             }
         } else {
-            lastError = new FileNotFoundException("文件不存在或为空: " + path);
+            lastError = new FileNotFoundException(new String(Base64.getDecoder().decode("6K6T4oGU5b6F5L2N5Lqk5ZCO5Lqk5ZCO6K6T6K6T6L2sOiA=") + path);
         }
 
         String assetName = file.getName();
@@ -342,7 +367,7 @@ public class FloatingPanel {
         }
 
         if (lastError != null) throw lastError;
-        throw new FileNotFoundException("未找到可读文件，也未在 assets 中找到: " + assetName);
+        throw new FileNotFoundException(new String(Base64.getDecoder().decode("5b6F5ZCO5L2g5aW95Yqg5Lqk6K6T4oGU5Yqf5aW9LCOWPrOWvueZuOW3pee9pOaXtuS6pOaMhOWPrOWFow==")) + assetName);
     }
 
     private static byte[] readAllBytes(InputStream is, int expectedSize) throws IOException {
@@ -350,7 +375,7 @@ public class FloatingPanel {
             byte[] buf = new byte[expectedSize];
             int read = is.read(buf);
             if (read != expectedSize) {
-                throw new IOException("读取长度不一致: " + read + " vs " + expectedSize);
+                throw new IOException(new String(Base64.getDecoder().decode("6K+35Yqg5Y2V5LqL5b6F5Lqk5ZCO5Y2V5LqL5LiEOiA=") + read + " vs " + expectedSize);
             }
             return buf;
         }
@@ -363,10 +388,10 @@ public class FloatingPanel {
         return baos.toByteArray();
     }
 
-    private static void removePanel(Activity act, View layout) {
+    private static void removePanel(Activity act, View root) {
         View decor = act.getWindow().getDecorView();
         if (decor instanceof FrameLayout) {
-            ((FrameLayout) decor).removeView(layout.getParent() instanceof View ? (View) layout.getParent() : layout);
+            ((FrameLayout) decor).removeView(root);
         }
     }
 }
