@@ -1,5 +1,7 @@
 package com.loader.stealth;
 
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Color;
@@ -15,8 +17,6 @@ import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.animation.ArgbEvaluator;
-import android.animation.ValueAnimator;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -185,16 +185,18 @@ public class FloatingPanel {
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
                 Color.parseColor("#9CFFA8"
-        )};
+
+        };
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
         animator.setRepeatCount(ValueAnimator.INFINITE);
         animator.setRepeatMode(ValueAnimator.REVERSE);
         animator.addUpdateListener(a -> {
             float f = (float) a.getAnimatedValue();
-            int c1 = colors[0];
-            int c2 = colors[(int) (colors.length * f) % colors.length];
-            int color = (Integer) new ArgbEvaluator().evaluate(f, c1, c2);
+            int idx = (int) (f * (colors.length - 1));
+            int c1 = colors[idx];
+            int c2 = colors[Math.min(idx + 1, colors.length - 1)];
+            int color = (Integer) new ArgbEvaluator().evaluate(f - idx, c1, c2);
             for (TextView tv : views) {
                 if (tv != null) tv.setTextColor(color);
             }
@@ -224,19 +226,79 @@ public class FloatingPanel {
     }
 
     private static void inject(Activity act, View layout, String path, View trigger) {
+        String prevState = null;
+        boolean disabledSelinux = false;
         try {
+            prevState = getSelinuxState();
+            // 强制关闭 selinux（需要 root/su）
+            if (!"permissive".equalsIgnoreCase(prevState)) {
+                if (setSelinuxState("0")) {
+                    disabledSelinux = true;
+                } else {
+                    Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
+                }
+            }
+
             byte[] bytes = loadSoBytes(act, path);
             String res = NativeLoader.memfdInject(bytes);
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
             if ("SUCCESS".equals(res)) {
                 new File(path).delete();
                 removePanel(act, layout);
-                return;
             }
         } catch (Exception e) {
             Toast.makeText(act, "失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        } finally {
+            // 注入后恢复 SELinux
+            if (disabledSelinux && prevState != null && !prevState.isEmpty()) {
+                setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
+            }
+            trigger.setEnabled(true);
         }
-        trigger.setEnabled(true);
+    }
+
+    private static boolean setSelinuxState(String state) {
+        // state: "0" permissive, "1" enforcing
+        return runShell("su", "-c", "setenforce " + state)
+                || runShell("setenforce " + state);
+    }
+
+    private static String getSelinuxState() {
+        String res = runShellForOutput("getenforce");
+        if (res == null) return "";
+        return res.trim();
+    }
+
+    private static boolean runShell(String... cmd) {
+        try {
+            Process p = new ProcessBuilder(cmd)
+                    .redirectErrorStream(true)
+                    .start();
+            int code = p.waitFor();
+            return code == 0;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static String runShellForOutput(String... cmd) {
+        try {
+            Process p = new ProcessBuilder(cmd)
+                    .redirectErrorStream(true)
+                    .start();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] buf = new byte[1024];
+            try (InputStream is = p.getInputStream()) {
+                int n;
+                while ((n = is.read(buf)) != -1) {
+                    baos.write(buf, 0, n);
+                }
+            }
+            p.waitFor();
+            return baos.toString();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static byte[] loadSoBytes(Context ctx, String path) throws IOException {
