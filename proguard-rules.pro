@@ -1,0 +1,9 @@
+-keep class de.robv.android.xposed.** { *; }
+-keep class io.github.libxposed.** { *; }
+-keep class com.loader.stealth.MainHook { *; }
+-keep class com.loader.stealth.FloatingPanel { *; }
+-keep class com.loader.stealth.NativeLoader { *; }
+-keepclassmembers class * extends de.robv.android.xposed.IXposedMod { *; }
+-keepclassmembers class * extends de.robv.android.xposed.IXposedHookLoadPackage { *; }
+-dontwarn de.robv.android.xposed.**
+-dontwarn io.github.libxposed.**
