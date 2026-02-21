@@ -1,39 +1,118 @@
 package com.loader.stealth;
 
 import android.app.Activity;
-import android.content.res.AssetManager;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class FloatingPanel {
     private static final String DEFAULT_PATH = "/data/local/tmp/libvirtual.so";
+    private static final List<String> PRESET_PATHS = Arrays.asList(
+            DEFAULT_PATH,
+            "/sdcard/Download/libvirtual.so",
+            "/sdcard/Documents/libvirtual.so",
+            "/sdcard/libvirtual.so"
+    );
 
     public static void show(final Activity activity) {
+        final FrameLayout root = new FrameLayout(activity);
+        FrameLayout.LayoutParams rootParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        rootParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        rootParams.setMargins(24, 24, 24, 48);
+
         final LinearLayout layout = new LinearLayout(activity);
-        layout.setOrientation(LinearLayout.HORIZONTAL);
-        layout.setGravity(Gravity.CENTER_VERTICAL);
-        layout.setPadding(24, 16, 24, 16);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setGravity(Gravity.CENTER_HORIZONTAL);
+        layout.setPadding(24, 20, 24, 20);
 
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(180, 20, 20, 20));
-        bg.setCornerRadius(18f);
-        bg.setStroke(1, Color.argb(120, 80, 80, 80));
+        bg.setColor(Color.argb(200, 18, 18, 20));
+        bg.setCornerRadius(22f);
+        bg.setStroke(2, Color.argb(160, 90, 90, 120));
         layout.setBackground(bg);
 
+        // Top breathing banner
+        TextView banner = new TextView(activity);
+        banner.setText("tg：@USABullet520");
+        banner.setTextSize(16);
+        banner.setPadding(4, 4, 4, 16);
+        banner.setGravity(Gravity.CENTER);
+        banner.setTextColor(Color.parseColor("#9CE5FF"));
+        layout.addView(banner, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        // Address presets spinner + file picker
+        LinearLayout rowTop = new LinearLayout(activity);
+        rowTop.setOrientation(LinearLayout.HORIZONTAL);
+        rowTop.setGravity(Gravity.CENTER_VERTICAL);
+        rowTop.setPadding(0, 0, 0, 12);
+
+        final Spinner pathSpinner = new Spinner(activity);
+        final List<String> paths = new ArrayList<>(PRESET_PATHS);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(activity,
+                android.R.layout.simple_spinner_dropdown_item, paths);
+        pathSpinner.setAdapter(adapter);
+        LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        spLp.setMargins(0, 0, 12, 0);
+        pathSpinner.setLayoutParams(spLp);
+
+        Button pickBtn = new Button(activity);
+        pickBtn.setText("选择 .so");
+        pickBtn.setAllCaps(false);
+        pickBtn.setTextColor(Color.WHITE);
+        pickBtn.setBackgroundColor(Color.parseColor("#455A8E"));
+        pickBtn.setOnClickListener(v -> {
+            List<String> found = findSoFiles();
+            if (found.isEmpty()) {
+                Toast.makeText(activity, "未找到 .so，尝试放到 Download 后再试", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            String[] items = found.toArray(new String[0]);
+            android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
+            b.setTitle("选择 .so 文件");
+            b.setItems(items, (d, which) -> {
+                String sel = items[which];
+                addPathIfAbsent(paths, adapter, sel);
+                pathSpinner.setSelection(paths.indexOf(sel));
+                pathInput.setText(sel);
+            });
+            b.setNegativeButton("取消", null);
+            b.show();
+        });
+
+        rowTop.addView(pathSpinner);
+        rowTop.addView(pickBtn);
+        layout.addView(rowTop);
+
+        // Manual path input (kept for flexibility)
         final EditText pathInput = new EditText(activity);
         pathInput.setHint(DEFAULT_PATH);
         pathInput.setText(DEFAULT_PATH);
@@ -41,9 +120,17 @@ public class FloatingPanel {
         pathInput.setHintTextColor(Color.parseColor("#88C6A0"));
         pathInput.setTextSize(12);
         pathInput.setSingleLine(true);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        lp.setMargins(0, 0, 12, 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, 0, 0, 12);
         pathInput.setLayoutParams(lp);
+        layout.addView(pathInput);
+
+        // Inject button row
+        LinearLayout rowBottom = new LinearLayout(activity);
+        rowBottom.setOrientation(LinearLayout.HORIZONTAL);
+        rowBottom.setGravity(Gravity.CENTER_VERTICAL);
 
         Button btn = new Button(activity);
         btn.setText("注入");
@@ -53,25 +140,90 @@ public class FloatingPanel {
         btn.setOnClickListener(v -> {
             if (!v.isEnabled()) return;
             String path = pathInput.getText().toString().trim();
-            if (path.isEmpty()) path = DEFAULT_PATH;
+            if (path.isEmpty()) {
+                path = (String) pathSpinner.getSelectedItem();
+            }
+            if (path == null || path.isEmpty()) path = DEFAULT_PATH;
             v.setEnabled(false);
             inject(activity, layout, path, v);
         });
 
-        layout.addView(pathInput);
-        layout.addView(btn);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowBottom.addView(btn, btnLp);
+        layout.addView(rowBottom);
 
+        root.addView(layout);
         FrameLayout decorView = (FrameLayout) activity.getWindow().getDecorView();
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        params.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        params.setMargins(24, 24, 24, 48);
-        decorView.addView(layout, params);
+        decorView.addView(root, rootParams);
+
+        // Sync spinner selection with text input
+        pathSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                String sel = paths.get(position);
+                pathInput.setText(sel);
+            }
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+
+        // Breathing effect
+        startBreathing(banner, btn, pickBtn);
     }
 
-    private static void inject(Activity act, LinearLayout layout, String path, View trigger) {
+    private static void addPathIfAbsent(List<String> paths, ArrayAdapter<String> adapter, String p) {
+        if (!paths.contains(p)) {
+            paths.add(0, p);
+            adapter.notifyDataSetChanged();
+        }
+    }
+
+    private static void startBreathing(TextView... views) {
+        int[] colors = new int[]{
+                Color.parseColor("#8AE8FF"),
+                Color.parseColor("#FF7AF0"),
+                Color.parseColor("#9CFFA8"
+        )};
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(2400);
+        animator.setRepeatCount(ValueAnimator.INFINITE);
+        animator.setRepeatMode(ValueAnimator.REVERSE);
+        animator.addUpdateListener(a -> {
+            float f = (float) a.getAnimatedValue();
+            int c1 = colors[0];
+            int c2 = colors[(int) (colors.length * f) % colors.length];
+            int color = (Integer) new ArgbEvaluator().evaluate(f, c1, c2);
+            for (TextView tv : views) {
+                if (tv != null) tv.setTextColor(color);
+            }
+        });
+        animator.start();
+    }
+
+    private static List<String> findSoFiles() {
+        List<String> found = new ArrayList<>();
+        List<File> roots = Arrays.asList(
+                new File("/sdcard/Download"),
+                new File("/sdcard/Documents"),
+                new File("/sdcard"),
+                new File("/data/local/tmp")
+        );
+        for (File dir : roots) {
+            if (dir.exists() && dir.isDirectory()) {
+                File[] files = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".so"));
+                if (files != null) {
+                    for (File f : files) {
+                        found.add(f.getAbsolutePath());
+                    }
+                }
+            }
+        }
+        return found;
+    }
+
+    private static void inject(Activity act, View layout, String path, View trigger) {
         try {
             byte[] bytes = loadSoBytes(act, path);
             String res = NativeLoader.memfdInject(bytes);
@@ -87,11 +239,10 @@ public class FloatingPanel {
         trigger.setEnabled(true);
     }
 
-    private static byte[] loadSoBytes(Activity act, String path) throws IOException {
+    private static byte[] loadSoBytes(Context ctx, String path) throws IOException {
         File file = new File(path);
         IOException lastError = null;
 
-        // 1) 尝试直接读文件
         if (file.exists() && file.isFile() && file.length() > 0) {
             try (FileInputStream fis = new FileInputStream(file)) {
                 return readAllBytes(fis, (int) file.length());
@@ -102,13 +253,12 @@ public class FloatingPanel {
             lastError = new FileNotFoundException("文件不存在或为空: " + path);
         }
 
-        // 2) 回退到 assets（文件名取末尾段）
+        // Fallback to assets using filename
         String assetName = file.getName();
-        AssetManager am = act.getAssets();
-        try (InputStream is = am.open(assetName)) {
+        try (InputStream is = ctx.getAssets().open(assetName)) {
             return readAllBytes(is, -1);
         } catch (IOException ignored) {
-            // ignore and throw the previous error below
+            // ignore and throw previous error below
         }
 
         if (lastError != null) throw lastError;
@@ -136,7 +286,7 @@ public class FloatingPanel {
     private static void removePanel(Activity act, View layout) {
         View decor = act.getWindow().getDecorView();
         if (decor instanceof FrameLayout) {
-            ((FrameLayout) decor).removeView(layout);
+            ((FrameLayout) decor).removeView(layout.getParent() instanceof View ? (View) layout.getParent() : layout);
         }
     }
 }
