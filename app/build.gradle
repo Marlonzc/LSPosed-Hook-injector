@@ -33,5 +33,5 @@ android {
 }
 
 dependencies {
-    compileOnly 'org.lsposed.lsposed:lsposed-api:93'
+    compileOnly 'io.github.libxposed:api:93'
 }
