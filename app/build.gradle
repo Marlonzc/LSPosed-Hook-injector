@@ -3,6 +3,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.loader.stealth'
     compileSdk 33
+
     defaultConfig {
         applicationId "com.loader.stealth"
         minSdk 26
@@ -18,12 +19,21 @@ android {
             }
         }
     }
+
     buildTypes {
-        release {
+        debug {
             minifyEnabled false
+            shrinkResources false
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.debug
+            debuggable false
         }
     }
+
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
@@ -33,9 +43,6 @@ android {
 }
 
 dependencies {
-    // libxposed 的实际依赖坐标并不是 com.github.libxposed:api
-    // 官方正确的坐标为：io.github.libxposed:api:xxx
-    // 但为防找不到，先提供稳定的 API 编译依赖
-    // (通常 Xposed / LSPosed 模块都会用原有的 Xposed API 或直接引入 LSPosed API 即可)
-    compileOnly 'de.robv.android.xposed:api:82' 
+    // 使用 libxposed 官方 API（仅编译期依赖，减少打包体积和特征）
+    compileOnly 'io.github.libxposed:api:100'
 }
