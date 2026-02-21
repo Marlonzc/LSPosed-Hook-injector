@@ -15,7 +15,6 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -39,6 +38,9 @@ public class FloatingPanel {
     );
 
     public static void show(final Activity activity) {
+        // 顶部常驻呼吸灯标语，独立于面板
+        showStickyBanner(activity);
+
         final FrameLayout root = new FrameLayout(activity);
         FrameLayout.LayoutParams rootParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -58,40 +60,12 @@ public class FloatingPanel {
         bg.setStroke(2, Color.argb(160, 90, 90, 120));
         layout.setBackground(bg);
 
-        // Top breathing banner
-        TextView banner = new TextView(activity);
-        banner.setText("tg：@USABullet520");
-        banner.setTextSize(16);
-        banner.setPadding(4, 4, 4, 16);
-        banner.setGravity(Gravity.CENTER);
-        banner.setTextColor(Color.parseColor("#9CE5FF"));
-        layout.addView(banner, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        // 路径输入 + 浏览按钮
+        LinearLayout rowPath = new LinearLayout(activity);
+        rowPath.setOrientation(LinearLayout.HORIZONTAL);
+        rowPath.setGravity(Gravity.CENTER_VERTICAL);
+        rowPath.setPadding(0, 0, 0, 12);
 
-        // Address presets spinner + file picker
-        LinearLayout rowTop = new LinearLayout(activity);
-        rowTop.setOrientation(LinearLayout.HORIZONTAL);
-        rowTop.setGravity(Gravity.CENTER_VERTICAL);
-        rowTop.setPadding(0, 0, 0, 12);
-
-        final Spinner pathSpinner = new Spinner(activity);
-        final List<String> paths = new ArrayList<>(PRESET_PATHS);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(activity,
-                android.R.layout.simple_spinner_dropdown_item, paths);
-        pathSpinner.setAdapter(adapter);
-        LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        spLp.setMargins(0, 0, 12, 0);
-        pathSpinner.setLayoutParams(spLp);
-
-        Button pickBtn = new Button(activity);
-        pickBtn.setText("选择 .so");
-        pickBtn.setAllCaps(false);
-        pickBtn.setTextColor(Color.WHITE);
-        pickBtn.setBackgroundColor(Color.parseColor("#455A8E"));
-
-        // Manual path input (kept for flexibility)
         final EditText pathInput = new EditText(activity);
         pathInput.setHint(DEFAULT_PATH);
         pathInput.setText(DEFAULT_PATH);
@@ -99,49 +73,49 @@ public class FloatingPanel {
         pathInput.setHintTextColor(Color.parseColor("#88C6A0"));
         pathInput.setTextSize(12);
         pathInput.setSingleLine(true);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 0, 0, 12);
-        pathInput.setLayoutParams(lp);
+        LinearLayout.LayoutParams pathLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        pathLp.setMargins(0, 0, 12, 0);
+        pathInput.setLayoutParams(pathLp);
 
-        pickBtn.setOnClickListener(v -> {
+        Button browseBtn = new Button(activity);
+        browseBtn.setText("浏览");
+        browseBtn.setAllCaps(false);
+        browseBtn.setTextColor(Color.WHITE);
+        browseBtn.setBackgroundColor(Color.parseColor("#455A8E"));
+        browseBtn.setOnClickListener(v -> {
             List<String> found = findSoFiles();
-            if (found.isEmpty()) {
+            // 合并预设与扫描结果
+            List<String> options = new ArrayList<>(PRESET_PATHS);
+            for (String f : found) {
+                if (!options.contains(f)) options.add(0, f);
+            }
+            if (options.isEmpty()) {
                 Toast.makeText(activity, "未找到 .so，尝试放到 Download 后再试", Toast.LENGTH_SHORT).show();
                 return;
             }
-            String[] items = found.toArray(new String[0]);
+            String[] items = options.toArray(new String[0]);
             android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
-            b.setTitle("选择 .so 文件");
-            b.setItems(items, (d, which) -> {
-                String sel = items[which];
-                addPathIfAbsent(paths, adapter, sel);
-                pathSpinner.setSelection(paths.indexOf(sel));
-                pathInput.setText(sel);
-            });
+            b.setTitle("选择 .so 路径");
+            b.setItems(items, (d, which) -> pathInput.setText(items[which]));
             b.setNegativeButton("取消", null);
             b.show();
         });
 
-        rowTop.addView(pathSpinner);
-        rowTop.addView(pickBtn);
-        layout.addView(rowTop);
+        rowPath.addView(pathInput);
+        rowPath.addView(browseBtn);
+        layout.addView(rowPath);
 
-        // Inject options row: checkbox + button
-        LinearLayout rowBottom = new LinearLayout(activity);
-        rowBottom.setOrientation(LinearLayout.HORIZONTAL);
-        rowBottom.setGravity(Gravity.CENTER_VERTICAL);
-
-        CheckBox selinuxToggle = new CheckBox(activity);
-        selinuxToggle.setText("允许切换 SELinux（仅在失败时）");
+        // SELinux 切换提示（默认隐藏，permission denied 时出现）
+        final CheckBox selinuxToggle = new CheckBox(activity);
+        selinuxToggle.setText("因权限失败时，允许临时关闭 SELinux 后重试");
         selinuxToggle.setTextColor(Color.parseColor("#C8FACC"));
         selinuxToggle.setChecked(true);
-        LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        cbLp.setMargins(0, 0, 12, 0);
-        selinuxToggle.setLayoutParams(cbLp);
-        rowBottom.addView(selinuxToggle);
+        selinuxToggle.setVisibility(View.GONE);
+        layout.addView(selinuxToggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // 注入按钮
         Button btn = new Button(activity);
         btn.setText("注入");
         btn.setAllCaps(false);
@@ -150,38 +124,55 @@ public class FloatingPanel {
         btn.setOnClickListener(v -> {
             if (!v.isEnabled()) return;
             String path = pathInput.getText().toString().trim();
-            if (path.isEmpty()) {
-                path = (String) pathSpinner.getSelectedItem();
-            }
-            if (path == null || path.isEmpty()) path = DEFAULT_PATH;
+            if (path.isEmpty()) path = DEFAULT_PATH;
             v.setEnabled(false);
-            inject(activity, layout, path, v, selinuxToggle.isChecked());
+            inject(activity, layout, path, v, selinuxToggle);
         });
-
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowBottom.addView(btn, btnLp);
-        layout.addView(pathInput);
-        layout.addView(rowBottom);
+        layout.addView(btn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
 
         root.addView(layout);
         FrameLayout decorView = (FrameLayout) activity.getWindow().getDecorView();
         decorView.addView(root, rootParams);
 
-        // Sync spinner selection with text input
-        pathSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                String sel = paths.get(position);
-                pathInput.setText(sel);
-            }
-            @Override
-            public void onNothingSelected(android.widget.AdapterView<?> parent) { }
-        });
+        // 呼吸灯效果：按钮 + 浏览按钮 + 顶部常驻标语
+        startBreathing(btn, browseBtn, findStickyBanner(decorView));
+    }
 
-        // Breathing effect
-        startBreathing(banner, btn, pickBtn);
+    private static void showStickyBanner(Activity activity) {
+        FrameLayout decorView = (FrameLayout) activity.getWindow().getDecorView();
+        View existing = findStickyBanner(decorView);
+        if (existing != null) return;
+
+        TextView banner = new TextView(activity);
+        banner.setTag("sticky_banner_top");
+        banner.setText("tg：@USABullet520");
+        banner.setTextSize(16);
+        banner.setPadding(12, 12, 12, 12);
+        banner.setGravity(Gravity.CENTER);
+        banner.setTextColor(Color.parseColor("#9CE5FF"));
+        banner.setBackgroundColor(Color.argb(120, 0, 0, 0));
+
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        lp.setMargins(12, 18, 12, 0);
+        decorView.addView(banner, lp);
+
+        startBreathing(banner);
+    }
+
+    private static TextView findStickyBanner(FrameLayout decorView) {
+        for (int i = 0; i < decorView.getChildCount(); i++) {
+            View v = decorView.getChildAt(i);
+            if (v instanceof TextView && "sticky_banner_top".equals(v.getTag())) {
+                return (TextView) v;
+            }
+        }
+        return null;
     }
 
     private static void addPathIfAbsent(List<String> paths, ArrayAdapter<String> adapter, String p) {
@@ -196,8 +187,7 @@ public class FloatingPanel {
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
                 Color.parseColor("#9CFFA8"
-                )
-        };
+        );
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
         animator.setRepeatCount(ValueAnimator.INFINITE);
@@ -236,22 +226,28 @@ public class FloatingPanel {
         return found;
     }
 
-    private static void inject(Activity act, View layout, String path, View trigger, boolean allowSelinuxSwitch) {
+    private static void inject(Activity act, View layout, String path, View trigger, CheckBox selinuxToggle) {
         String prevState = null;
         boolean disabledSelinux = false;
         try {
-            // First attempt: no SELinux change
             byte[] bytes = loadSoBytes(act, path);
+
             String res = NativeLoader.memfdInject(bytes);
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
-            if ("SUCCESS".equals(res)) {
+            if ("SUCCESS".equalsIgnoreCase(res)) {
                 new File(path).delete();
                 removePanel(act, layout);
                 return;
             }
 
-            // Second attempt only if allowed
-            if (allowSelinuxSwitch) {
+            boolean permissionIssue = containsPermDenied(res);
+            if (permissionIssue && selinuxToggle.getVisibility() != View.VISIBLE) {
+                selinuxToggle.setVisibility(View.VISIBLE);
+                selinuxToggle.setChecked(true);
+                Toast.makeText(act, "检测到权限失败，可勾选允许临时关闭 SELinux 后重试", Toast.LENGTH_LONG).show();
+            }
+
+            if (permissionIssue && selinuxToggle.getVisibility() == View.VISIBLE && selinuxToggle.isChecked()) {
                 prevState = getSelinuxState();
                 if (!"permissive".equalsIgnoreCase(prevState)) {
                     if (setSelinuxState("0")) {
@@ -262,20 +258,32 @@ public class FloatingPanel {
                 }
                 res = NativeLoader.memfdInject(bytes);
                 Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
-                if ("SUCCESS".equals(res)) {
+                if ("SUCCESS".equalsIgnoreCase(res)) {
                     new File(path).delete();
                     removePanel(act, layout);
                     return;
                 }
             }
         } catch (Exception e) {
-            Toast.makeText(act, "失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            String msg = e.getMessage();
+            Toast.makeText(act, "失败: " + msg, Toast.LENGTH_SHORT).show();
+            if (containsPermDenied(msg) && selinuxToggle.getVisibility() != View.VISIBLE) {
+                selinuxToggle.setVisibility(View.VISIBLE);
+                selinuxToggle.setChecked(true);
+                Toast.makeText(act, "检测到权限失败，可勾选允许临时关闭 SELinux 后重试", Toast.LENGTH_LONG).show();
+            }
         } finally {
             if (disabledSelinux && prevState != null && !prevState.isEmpty()) {
                 setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
             }
             trigger.setEnabled(true);
         }
+    }
+
+    private static boolean containsPermDenied(String msg) {
+        if (msg == null) return false;
+        String m = msg.toLowerCase();
+        return m.contains("permission denied") || m.contains("selinux") || m.contains("ephemeralappfileaccess") || m.contains("eacces");
     }
 
     private static boolean setSelinuxState(String state) {
