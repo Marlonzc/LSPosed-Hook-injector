@@ -5,8 +5,15 @@ import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
+import android.os.Debug;
+import android.provider.Settings;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -20,27 +27,40 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
+import java.util.Random;
 
 public class FloatingPanel {
-    private static final String DEFAULT_PATH = new String(Base64.getDecoder().decode("L2RhdGEvbG9jYWwvdG1wL2xpYnZpcnR1YWwuc28="));
+    private static final String DEFAULT_PATH = xorDecode("L2RhdGEvbG9jYWwvdG1wL2xpYnZpcnR1YWwuc28=", 42);
     private static final List<String> PRESET_PATHS = Arrays.asList(
             DEFAULT_PATH,
-            new String(Base64.getDecoder().decode("L3NkY2FyZC9Eb3dubG9hZC9saWJ2aXJ0dWFsLnNv")),
-            new String(Base64.getDecoder().decode("L3NkY2FyZC9Eb2N1bWVudHMvbGlidmlydHVhbC5zbw==")),
-            new String(Base64.getDecoder().decode("L3NkY2FyZC9saWJ2aXJ0dWFsLnNv"))
+            xorDecode("L3NkY2FyZC9Eb3dubG9hZC9saWJ2aXJ0dWFsLnNv", 42),
+            xorDecode("L3NkY2FyZC9Eb2N1bWVudHMvbGlidmlydHVhbC5zbw==", 42),
+            xorDecode("L3NkY2FyZC9saWJ2aXJ0dWFsLnNv", 42)
     );
 
     public static void show(final Activity activity) {
+        if (isDebuggerAttached() || isEmulator()) {
+            return; // Conceal from debug/emulator
+        }
+        if (Settings.canDrawOverlays(activity) && hasSuspiciousOverlays()) {
+            randomDelay(1000, 3000); // Delay for overlay detection
+        }
+        if (!checkSignature(activity)) {
+            return; // Signature bypass check
+        }
+
         final FrameLayout root = new FrameLayout(activity);
         FrameLayout.LayoutParams rootParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -51,7 +71,7 @@ public class FloatingPanel {
 
         // Top breathing banner
         TextView banner = new TextView(activity);
-        banner.setText(new String(Base64.getDecoder().decode("dGc6QFVTQUJ1bGxldDUyMA==")));
+        banner.setText(xorDecode("dGc6QFVTQUJ1bGxldDUyMA==", 42));
         banner.setTextSize(16);
         banner.setPadding(4, 4, 4, 16);
         banner.setGravity(Gravity.CENTER);
@@ -91,7 +111,7 @@ public class FloatingPanel {
         pathSpinner.setLayoutParams(spLp);
 
         Button pickBtn = new Button(activity);
-        pickBtn.setText(new String(Base64.getDecoder().decode("5L2g5aW9IC5zbw==")));
+        pickBtn.setText(xorDecode("5L2g5aW9IC5zbw==", 42));
         pickBtn.setAllCaps(false);
         pickBtn.setTextColor(Color.WHITE);
         pickBtn.setBackgroundColor(Color.parseColor("#455A8E"));
@@ -113,19 +133,19 @@ public class FloatingPanel {
         pickBtn.setOnClickListener(v -> {
             List<String> found = findSoFiles();
             if (found.isEmpty()) {
-                Toast.makeText(activity, new String(Base64.getDecoder().decode("5b6F5ZCO5L2g5aW9LnNvIOWFrOWPu+WNl+WIqOW6p+WFtA==")), Toast.LENGTH_SHORT).show();
+                // Concealed output
                 return;
             }
             String[] items = found.toArray(new String[0]);
             AlertDialog.Builder b = new AlertDialog.Builder(activity);
-            b.setTitle(new String(Base64.getDecoder().decode("5L2g5aW9IC5zbyDmnIPlr4A=")));
+            b.setTitle(xorDecode("5L2g5aW9IC5zbyDmnIPlr4A=", 42));
             b.setItems(items, (d, which) -> {
                 String sel = items[which];
                 addPathIfAbsent(paths, adapter, sel);
                 pathSpinner.setSelection(paths.indexOf(sel));
                 pathInput.setText(sel);
             });
-            b.setNegativeButton(new String(Base64.getDecoder().decode("5Yqg55S7")), null);
+            b.setNegativeButton(xorDecode("5Yqg55S7", 42), null);
             b.show();
         });
 
@@ -139,7 +159,7 @@ public class FloatingPanel {
         rowBottom.setGravity(Gravity.CENTER_VERTICAL);
 
         CheckBox selinuxToggle = new CheckBox(activity);
-        selinuxToggle.setText(new String(Base64.getDecoder().decode("5Y+Y5L2g5Lqk5rWBIFNFTGludXggKOeUl+aMhOWPr+aMhOivt+W4g+eUqA==")));
+        selinuxToggle.setText(xorDecode("5Y+Y5L2g5Lqk5rWBIFNFTGludXggKOeUl+aMhOWPr+aMhOivt+W4g+eUqA==", 42));
         selinuxToggle.setTextColor(Color.parseColor("#C8FACC"));
         selinuxToggle.setChecked(true);
         LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -148,7 +168,7 @@ public class FloatingPanel {
         rowBottom.addView(selinuxToggle);
 
         Button btn = new Button(activity);
-        btn.setText(new String(Base64.getDecoder().decode("5Yqf5a+G"));
+        btn.setText(xorDecode("5Yqf5a+G", 42));
         btn.setAllCaps(false);
         btn.setTextColor(Color.WHITE);
         btn.setBackgroundColor(Color.parseColor("#3A8FB7"));
@@ -160,6 +180,7 @@ public class FloatingPanel {
             }
             if (path == null || path.isEmpty()) path = DEFAULT_PATH;
             v.setEnabled(false);
+            randomDelay(500, 2000); // Random delay before inject
             inject(activity, root, layout, path, v, selinuxToggle.isChecked());
         });
 
@@ -201,7 +222,7 @@ public class FloatingPanel {
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
                 Color.parseColor("#9CFFA8"
-        };
+        );
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
         animator.setRepeatCount(ValueAnimator.INFINITE);
@@ -246,10 +267,10 @@ public class FloatingPanel {
         boolean retried = false;
         try {
             // First attempt: no SELinux change
-            byte[] bytes = loadSoBytes(act, path);
+            byte[] bytes = xorDecrypt(loadSoBytes(act, path), 42); // Decrypt loaded bytes
             String res = NativeLoader.memfdInject(bytes);
-            Toast.makeText(act, new String(Base64.getDecoder().decode("5Lqk5rWB5LqkOiA=") + res, Toast.LENGTH_SHORT).show();
-            if("SUCCESS".equals(res)) {
+            // Concealed output: no toast
+            if ("SUCCESS".equals(res)) {
                 new File(path).delete();
                 removePanel(act, root);
                 return;
@@ -259,20 +280,19 @@ public class FloatingPanel {
             if (allowSelinuxSwitch) {
                 // Secondary confirmation dialog
                 AlertDialog.Builder confirmBuilder = new AlertDialog.Builder(act);
-                confirmBuilder.setTitle(new String(Base64.getDecoder().decode("5Lqk5rWB5Lqk5oiQ5Yqf")));
-                confirmBuilder.setMessage(new String(Base64.getDecoder().decode("6K+35Lqk5rWBIFNFTGludXgg5Y+Y5L2g5Lqk5rWB5oiQ5Yqf5Yqf5a+G77yB")));
-                confirmBuilder.setPositiveButton(new String(Base64.getDecoder().decode("5oiQ5Yqf")
-        (dialog, which) -> {
+                confirmBuilder.setTitle(xorDecode("5Lqk5rWB5Lqk5oiQ5Yqf", 42));
+                confirmBuilder.setMessage(xorDecode("6K+35Lqk5rWBIFNFTGludXgg5Y+Y5L2g5Lqk5rWB5oiQ5Yqf5Yqf5a+G77yB", 42));
+                confirmBuilder.setPositiveButton(xorDecode("5oiQ5Yqf", 42), (dialog, which) -> {
                     performSelinuxSwitch(act, root, layout, path, trigger, prevState, disabledSelinux, retried, bytes);
                 });
-                confirmBuilder.setNegativeButton(new String(Base64.getDecoder().decode("5Yqg55S7")), (dialog, which) -> {
+                confirmBuilder.setNegativeButton(xorDecode("5Yqg55S7", 42), (dialog, which) -> {
                     trigger.setEnabled(true);
                 });
                 confirmBuilder.show();
                 return;
             }
         } catch (Exception e) {
-            Toast.makeText(act, new String(Base64.getDecoder().decode("5Yqf5a+G5LqkOiA=") + e.getMessage(), Toast.LENGTH_SHORT).show();
+            // Concealed output
         } finally {
             if (disabledSelinux && prevState != null && !prevState.isEmpty()) {
                 setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
@@ -287,14 +307,14 @@ public class FloatingPanel {
             if (setSelinuxState("0")) {
                 disabledSelinux = true;
             } else {
-                Toast.makeText(act, new String(Base64.getDecoder().decode("5Lqk5rWBIFNFTGludXgg5Yqf5a+G5LqkLOeUsOaMhOWPr+aMhOW4g+eUqA==")), Toast.LENGTH_SHORT).show();
+                // Concealed output
                 trigger.setEnabled(true);
                 return;
             }
         }
         retried = true;
         String res = NativeLoader.memfdInject(bytes);
-        Toast.makeText(act, new String(Base64.getDecoder().decode("5LqU5pS25Lqk5rWB5LqkOiA=") + res, Toast.LENGTH_SHORT).show();
+        // Concealed output
         if ("SUCCESS".equals(res)) {
             new File(path).delete();
             removePanel(act, root);
@@ -354,10 +374,10 @@ public class FloatingPanel {
             try (FileInputStream fis = new FileInputStream(file)) {
                 return readAllBytes(fis, (int) file.length());
             } catch (SecurityException | IOException e) {
-                lastError = new IOException(new String(Base64.getDecoder().decode("6K+35Yqg5Lqk5LqkOiA=") + e.getMessage(), e);
+                lastError = new IOException(xorDecode("6K+35Yqg5Lqk5LqkOiA=", 42) + e.getMessage(), e);
             }
         } else {
-            lastError = new FileNotFoundException(new String(Base64.getDecoder().decode("6K6T4oGU5b6F5L2N5Lqk5ZCO5Lqk5ZCO6K6T6K6T6L2sOiA=") + path);
+            lastError = new FileNotFoundException(xorDecode("6K6T4oGU5b6F5L2N5Lqk5ZCO5Lqk5ZCO6K6T6K6T6L2sOiA=", 42) + path);
         }
 
         String assetName = file.getName();
@@ -367,7 +387,7 @@ public class FloatingPanel {
         }
 
         if (lastError != null) throw lastError;
-        throw new FileNotFoundException(new String(Base64.getDecoder().decode("5b6F5ZCO5L2g5aW95Yqg5Lqk6K6T4oGU5Yqf5aW9LCOWPrOWvueZuOW3pee9pOaXtuS6pOaMhOWPrOWFow==")) + assetName);
+        throw new FileNotFoundException(xorDecode("5b6F5ZCO5L2g5aW95Yqg5Lqk6K6T4oGU5Yqf5aW9LCOWPrOWvueZuOW3pee9pOaXtuS6pOaMhOWPrOWFow==", 42) + assetName);
     }
 
     private static byte[] readAllBytes(InputStream is, int expectedSize) throws IOException {
@@ -375,7 +395,7 @@ public class FloatingPanel {
             byte[] buf = new byte[expectedSize];
             int read = is.read(buf);
             if (read != expectedSize) {
-                throw new IOException(new String(Base64.getDecoder().decode("6K+35Yqg5Y2V5LqL5b6F5Lqk5ZCO5Y2V5LqL5LiEOiA=") + read + " vs " + expectedSize);
+                throw new IOException(xorDecode("6K+35Yqg5Y2V5LqL5b6F5Lqk5ZCO5Y2V5LqL5LiEOiA=", 42) + read + " vs " + expectedSize);
             }
             return buf;
         }
@@ -393,5 +413,57 @@ public class FloatingPanel {
         if (decor instanceof FrameLayout) {
             ((FrameLayout) decor).removeView(root);
         }
+    }
+
+    // Concealment enhancements
+    private static boolean isDebuggerAttached() {
+        return Debug.isDebuggerConnected();
+    }
+
+    private static boolean isEmulator() {
+        return Build.MODEL.contains("sdk") || Build.MODEL.contains("emulator") || Build.BRAND.startsWith("generic");
+    }
+
+    private static boolean checkSignature(Context ctx) {
+        try {
+            PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), PackageManager.GET_SIGNATURES);
+            for (Signature sig : pi.signatures) {
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                md.update(sig.toByteArray());
+                // Placeholder: compare with known hash
+                return true; // Bypass for now, enhance with real hash check
+            }
+        } catch (PackageManager.NameNotFoundException | NoSuchAlgorithmException e) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean hasSuspiciousOverlays() {
+        // Placeholder: check for overlays, e.g., if screen is covered
+        return false; // Implement with WindowManager or AccessibilityService
+    }
+
+    private static void randomDelay(int min, int max) {
+        try {
+            Thread.sleep(new Random().nextInt(max - min) + min);
+        } catch (InterruptedException ignored) {
+        }
+    }
+
+    private static String xorDecode(String encoded, int key) {
+        byte[] decoded = Base64.getDecoder().decode(encoded);
+        for (int i = 0; i < decoded.length; i++) {
+            decoded[i] ^= key;
+        }
+        return new String(decoded);
+    }
+
+    private static byte[] xorDecrypt(byte[] data, int key) {
+        byte[] decrypted = new byte[data.length];
+        for (int i = 0; i < data.length; i++) {
+            decrypted[i] = (byte) (data[i] ^ key);
+        }
+        return decrypted;
     }
 }
