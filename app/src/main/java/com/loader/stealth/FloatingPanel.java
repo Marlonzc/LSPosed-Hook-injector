@@ -1,6 +1,7 @@
 package com.loader.stealth;
 
 import android.app.Activity;
+import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
@@ -11,9 +12,12 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Toast;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 
 public class FloatingPanel {
     private static final String DEFAULT_PATH = "/data/local/tmp/libvirtual.so";
@@ -68,20 +72,12 @@ public class FloatingPanel {
     }
 
     private static void inject(Activity act, LinearLayout layout, String path, View trigger) {
-        File file = new File(path);
-        if (!file.exists() || !file.isFile() || file.length() == 0) {
-            Toast.makeText(act, "路径无效或文件为空", Toast.LENGTH_SHORT).show();
-            trigger.setEnabled(true);
-            return;
-        }
-        try (FileInputStream fis = new FileInputStream(file)) {
-            byte[] bytes = new byte[(int) file.length()];
-            int read = fis.read(bytes);
-            if (read != bytes.length) throw new IOException("读取长度不一致");
+        try {
+            byte[] bytes = loadSoBytes(act, path);
             String res = NativeLoader.memfdInject(bytes);
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
             if ("SUCCESS".equals(res)) {
-                file.delete();
+                new File(path).delete();
                 removePanel(act, layout);
                 return;
             }
@@ -89,6 +85,52 @@ public class FloatingPanel {
             Toast.makeText(act, "失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
         trigger.setEnabled(true);
+    }
+
+    private static byte[] loadSoBytes(Activity act, String path) throws IOException {
+        File file = new File(path);
+        IOException lastError = null;
+
+        // 1) 尝试直接读文件
+        if (file.exists() && file.isFile() && file.length() > 0) {
+            try (FileInputStream fis = new FileInputStream(file)) {
+                return readAllBytes(fis, (int) file.length());
+            } catch (SecurityException | IOException e) {
+                lastError = new IOException("读取失败: " + e.getMessage(), e);
+            }
+        } else {
+            lastError = new FileNotFoundException("文件不存在或为空: " + path);
+        }
+
+        // 2) 回退到 assets（文件名取末尾段）
+        String assetName = file.getName();
+        AssetManager am = act.getAssets();
+        try (InputStream is = am.open(assetName)) {
+            return readAllBytes(is, -1);
+        } catch (IOException ignored) {
+            // ignore and throw the previous error below
+        }
+
+        if (lastError != null) throw lastError;
+        throw new FileNotFoundException("未找到可读文件，也未在 assets 中找到: " + assetName);
+    }
+
+    private static byte[] readAllBytes(InputStream is, int expectedSize) throws IOException {
+        if (expectedSize >= 0) {
+            byte[] buf = new byte[expectedSize];
+            int read = is.read(buf);
+            if (read != expectedSize) {
+                throw new IOException("读取长度不一致: " + read + " vs " + expectedSize);
+            }
+            return buf;
+        }
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        byte[] temp = new byte[16 * 1024];
+        int n;
+        while ((n = is.read(temp)) != -1) {
+            baos.write(temp, 0, n);
+        }
+        return baos.toByteArray();
     }
 
     private static void removePanel(Activity act, View layout) {
