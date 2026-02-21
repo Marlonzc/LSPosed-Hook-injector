@@ -1,0 +1,6 @@
+<resources>
+    <string-array name="xposedscope">
+        <!-- Add the target package names you want this module to hook. Replace or append as needed. -->
+        <item>com.android.systemui</item>
+    </string-array>
+</resources>
