@@ -4,5 +4,16 @@
     <application
         android:label="StealthInjector"
         android:hasCode="true">
+        
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="Stealth Injector Module" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82" />
+            
     </application>
 </manifest>
