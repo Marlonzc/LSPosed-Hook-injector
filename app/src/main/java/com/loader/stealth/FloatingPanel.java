@@ -3,19 +3,17 @@ package com.loader.stealth;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -31,14 +29,26 @@ import java.util.List;
 
 public class FloatingPanel {
     private static final String DEFAULT_PATH = "/data/local/tmp/libvirtual.so";
-    private static final List<String> PRESET_PATHS = Arrays.asList(
-            DEFAULT_PATH,
-            "/sdcard/Download/libvirtual.so",
-            "/sdcard/Documents/libvirtual.so",
-            "/sdcard/libvirtual.so"
-    );
 
     public static void show(final Activity activity) {
+        final FrameLayout decorView = (FrameLayout) activity.getWindow().getDecorView();
+
+        // Top banner — added directly to DecorView, always visible
+        TextView topBanner = new TextView(activity);
+        topBanner.setText("tg：@USABullet520");
+        topBanner.setTextSize(20);
+        topBanner.setPadding(40, 48, 40, 12);
+        topBanner.setGravity(Gravity.CENTER);
+        topBanner.setTextColor(Color.parseColor("#9CE5FF"));
+        topBanner.setBackgroundColor(Color.argb(160, 0, 0, 0));
+        FrameLayout.LayoutParams bannerParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        bannerParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        decorView.addView(topBanner, bannerParams);
+
+        // Floating panel at bottom
         final FrameLayout root = new FrameLayout(activity);
         FrameLayout.LayoutParams rootParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -58,40 +68,14 @@ public class FloatingPanel {
         bg.setStroke(2, Color.argb(160, 90, 90, 120));
         layout.setBackground(bg);
 
-        // Top breathing banner
-        TextView banner = new TextView(activity);
-        banner.setText("tg：@USABullet520");
-        banner.setTextSize(16);
-        banner.setPadding(4, 4, 4, 16);
-        banner.setGravity(Gravity.CENTER);
-        banner.setTextColor(Color.parseColor("#9CE5FF"));
-        layout.addView(banner, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        // Visual directory browser button
+        Button browseBtn = new Button(activity);
+        browseBtn.setText("浏览文件");
+        browseBtn.setAllCaps(false);
+        browseBtn.setTextColor(Color.WHITE);
+        browseBtn.setBackgroundColor(Color.parseColor("#455A8E"));
 
-        // Address presets spinner + file picker
-        LinearLayout rowTop = new LinearLayout(activity);
-        rowTop.setOrientation(LinearLayout.HORIZONTAL);
-        rowTop.setGravity(Gravity.CENTER_VERTICAL);
-        rowTop.setPadding(0, 0, 0, 12);
-
-        final Spinner pathSpinner = new Spinner(activity);
-        final List<String> paths = new ArrayList<>(PRESET_PATHS);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(activity,
-                android.R.layout.simple_spinner_dropdown_item, paths);
-        pathSpinner.setAdapter(adapter);
-        LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        spLp.setMargins(0, 0, 12, 0);
-        pathSpinner.setLayoutParams(spLp);
-
-        Button pickBtn = new Button(activity);
-        pickBtn.setText("选择 .so");
-        pickBtn.setAllCaps(false);
-        pickBtn.setTextColor(Color.WHITE);
-        pickBtn.setBackgroundColor(Color.parseColor("#455A8E"));
-
-        // Manual path input (kept for flexibility)
+        // Manual path input (fallback)
         final EditText pathInput = new EditText(activity);
         pathInput.setHint(DEFAULT_PATH);
         pathInput.setText(DEFAULT_PATH);
@@ -105,42 +89,20 @@ public class FloatingPanel {
         lp.setMargins(0, 0, 0, 12);
         pathInput.setLayoutParams(lp);
 
-        pickBtn.setOnClickListener(v -> {
-            List<String> found = findSoFiles();
-            if (found.isEmpty()) {
-                Toast.makeText(activity, "未找到 .so，尝试放到 Download 后再试", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            String[] items = found.toArray(new String[0]);
-            android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
-            b.setTitle("选择 .so 文件");
-            b.setItems(items, (d, which) -> {
-                String sel = items[which];
-                addPathIfAbsent(paths, adapter, sel);
-                pathSpinner.setSelection(paths.indexOf(sel));
-                pathInput.setText(sel);
-            });
-            b.setNegativeButton("取消", null);
-            b.show();
-        });
+        browseBtn.setOnClickListener(v -> showFileBrowser(activity, new File("/sdcard"), pathInput));
 
-        rowTop.addView(pathSpinner);
-        rowTop.addView(pickBtn);
-        layout.addView(rowTop);
+        LinearLayout rowTop = new LinearLayout(activity);
+        rowTop.setOrientation(LinearLayout.HORIZONTAL);
+        rowTop.setGravity(Gravity.CENTER_VERTICAL);
+        rowTop.setPadding(0, 0, 0, 12);
+        rowTop.addView(browseBtn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // Inject options row: checkbox + button
+        // Inject button row
         LinearLayout rowBottom = new LinearLayout(activity);
         rowBottom.setOrientation(LinearLayout.HORIZONTAL);
         rowBottom.setGravity(Gravity.CENTER_VERTICAL);
-
-        CheckBox selinuxToggle = new CheckBox(activity);
-        selinuxToggle.setText("允许切换 SELinux（仅在失败时）");
-        selinuxToggle.setTextColor(Color.parseColor("#C8FACC"));
-        selinuxToggle.setChecked(true);
-        LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        cbLp.setMargins(0, 0, 12, 0);
-        selinuxToggle.setLayoutParams(cbLp);
-        rowBottom.addView(selinuxToggle);
 
         Button btn = new Button(activity);
         btn.setText("注入");
@@ -150,53 +112,76 @@ public class FloatingPanel {
         btn.setOnClickListener(v -> {
             if (!v.isEnabled()) return;
             String path = pathInput.getText().toString().trim();
-            if (path.isEmpty()) {
-                path = (String) pathSpinner.getSelectedItem();
-            }
-            if (path == null || path.isEmpty()) path = DEFAULT_PATH;
+            if (path.isEmpty()) path = DEFAULT_PATH;
             v.setEnabled(false);
-            inject(activity, layout, path, v, selinuxToggle.isChecked());
+            inject(activity, layout, path, v);
         });
 
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowBottom.addView(btn, btnLp);
+        rowBottom.addView(btn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        layout.addView(rowTop);
         layout.addView(pathInput);
         layout.addView(rowBottom);
 
         root.addView(layout);
-        FrameLayout decorView = (FrameLayout) activity.getWindow().getDecorView();
         decorView.addView(root, rootParams);
 
-        // Sync spinner selection with text input
-        pathSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                String sel = paths.get(position);
-                pathInput.setText(sel);
-            }
-            @Override
-            public void onNothingSelected(android.widget.AdapterView<?> parent) { }
-        });
-
-        // Breathing effect
-        startBreathing(banner, btn, pickBtn);
+        // Breathing effect on top banner
+        startBreathing(topBanner);
     }
 
-    private static void addPathIfAbsent(List<String> paths, ArrayAdapter<String> adapter, String p) {
-        if (!paths.contains(p)) {
-            paths.add(0, p);
-            adapter.notifyDataSetChanged();
+    private static void showFileBrowser(final Activity activity, final File dir, final EditText pathInput) {
+        File[] entries = dir.listFiles();
+        final List<String> items = new ArrayList<>();
+        final List<File> files = new ArrayList<>();
+
+        // Parent directory navigation
+        if (dir.getParentFile() != null) {
+            items.add(".. (返回上级)");
+            files.add(dir.getParentFile());
         }
+
+        // Directories first, then .so files
+        if (entries != null) {
+            Arrays.sort(entries, (a, b) -> {
+                if (a.isDirectory() && !b.isDirectory()) return -1;
+                if (!a.isDirectory() && b.isDirectory()) return 1;
+                return a.getName().compareToIgnoreCase(b.getName());
+            });
+            for (File f : entries) {
+                if (f.isDirectory()) {
+                    items.add("[" + f.getName() + "]");
+                    files.add(f);
+                } else if (f.getName().toLowerCase().endsWith(".so")) {
+                    items.add(f.getName());
+                    files.add(f);
+                }
+            }
+        }
+
+        new AlertDialog.Builder(activity)
+                .setTitle(dir.getAbsolutePath())
+                .setItems(items.toArray(new String[0]), (d, which) -> {
+                    File selected = files.get(which);
+                    if (selected.isDirectory()) {
+                        d.dismiss();
+                        showFileBrowser(activity, selected, pathInput);
+                    } else {
+                        pathInput.setText(selected.getAbsolutePath());
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     private static void startBreathing(TextView... views) {
         int[] colors = new int[]{
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
-                Color.parseColor("#9CFFA8"
-        );
+                Color.parseColor("#9CFFA8")
+        };
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
         animator.setRepeatCount(ValueAnimator.INFINITE);
@@ -214,67 +199,59 @@ public class FloatingPanel {
         animator.start();
     }
 
-    private static List<String> findSoFiles() {
-        List<String> found = new ArrayList<>();
-        List<File> roots = Arrays.asList(
-                new File("/sdcard/Download"),
-                new File("/sdcard/Documents"),
-                new File("/sdcard"),
-                new File("/data/local/tmp"
-        );
-        for (File dir : roots) {
-            if (dir.exists() && dir.isDirectory()) {
-                File[] files = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".so"));
-                if (files != null) {
-                    for (File f : files) {
-                        found.add(f.getAbsolutePath());
-                    }
-                }
-            }
-        }
-        return found;
-    }
-
-    private static void inject(Activity act, View layout, String path, View trigger, boolean allowSelinuxSwitch) {
-        String prevState = null;
-        boolean disabledSelinux = false;
+    private static void inject(final Activity act, final View layout, final String path, final View trigger) {
+        final byte[] bytes;
         try {
-            // First attempt: no SELinux change
-            byte[] bytes = loadSoBytes(act, path);
-            String res = NativeLoader.memfdInject(bytes);
-            Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
-            if ("SUCCESS".equals(res)) {
-                new File(path).delete();
-                removePanel(act, layout);
-                return;
-            }
-
-            // Second attempt only if allowed
-            if (allowSelinuxSwitch) {
-                prevState = getSelinuxState();
-                if (!"permissive".equalsIgnoreCase(prevState)) {
-                    if (setSelinuxState("0")) {
-                        disabledSelinux = true;
-                    } else {
-                        Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
-                    }
-                }
-                res = NativeLoader.memfdInject(bytes);
-                Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
-                if ("SUCCESS".equals(res)) {
-                    new File(path).delete();
-                    removePanel(act, layout);
-                    return;
-                }
-            }
+            bytes = loadSoBytes(act, path);
         } catch (Exception e) {
             Toast.makeText(act, "失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        } finally {
-            if (disabledSelinux && prevState != null && !prevState.isEmpty()) {
-                setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
-            }
             trigger.setEnabled(true);
+            return;
         }
+
+        // First attempt: inject without touching SELinux
+        String res = NativeLoader.memfdInject(bytes);
+        Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
+        if ("SUCCESS".equals(res)) {
+            new File(path).delete();
+            removePanel(act, layout);
+            return;
+        }
+
+        // First attempt failed — ask user whether to retry with SELinux permissive
+        new AlertDialog.Builder(act)
+                .setTitle("注入失败")
+                .setMessage("首次注入未成功，是否尝试切换 SELinux 为 Permissive 后重试？")
+                .setPositiveButton("确认重试", (dialog, which) -> new Thread(() -> {
+                    String prevState = getSelinuxState();
+                    boolean changed = false;
+                    if (!"permissive".equalsIgnoreCase(prevState)) {
+                        if (setSelinuxState("0")) {
+                            changed = true;
+                        } else {
+                            act.runOnUiThread(() -> Toast.makeText(act,
+                                    "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show());
+                        }
+                    }
+                    try {
+                        String res2 = NativeLoader.memfdInject(bytes);
+                        act.runOnUiThread(() -> Toast.makeText(act,
+                                "二次结果: " + res2, Toast.LENGTH_SHORT).show());
+                        if ("SUCCESS".equals(res2)) {
+                            new File(path).delete();
+                            act.runOnUiThread(() -> removePanel(act, layout));
+                            return;
+                        }
+                    } finally {
+                        if (changed) {
+                            setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
+                        }
+                        act.runOnUiThread(() -> trigger.setEnabled(true));
+                    }
+                }).start())
+                .setNegativeButton("取消", (dialog, which) -> trigger.setEnabled(true))
+                .setCancelable(false)
+                .show();
     }
 
     private static boolean setSelinuxState(String state) {
