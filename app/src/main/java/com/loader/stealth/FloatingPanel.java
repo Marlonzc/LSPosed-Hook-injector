@@ -17,6 +17,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.media.MediaPlayer;
+import android.media.RingtoneManager;
 import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
@@ -195,7 +197,7 @@ public class FloatingPanel {
         int[] colors = new int[]{
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
-                Color.parseColor("#9CFFA8"
+                Color.parseColor("#9CFFA8")
         );
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
@@ -220,7 +222,7 @@ public class FloatingPanel {
                 new File("/sdcard/Download"),
                 new File("/sdcard/Documents"),
                 new File("/sdcard"),
-                new File("/data/local/tmp"
+                new File("/data/local/tmp")
         );
         for (File dir : roots) {
             if (dir.exists() && dir.isDirectory()) {
@@ -244,6 +246,7 @@ public class FloatingPanel {
             String res = NativeLoader.memfdInject(bytes);
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
             if ("SUCCESS".equals(res)) {
+                playSuccessSound(act);
                 new File(path).delete();
                 removePanel(act, layout);
                 return;
@@ -262,6 +265,7 @@ public class FloatingPanel {
                 res = NativeLoader.memfdInject(bytes);
                 Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
                 if ("SUCCESS".equals(res)) {
+                    playSuccessSound(act);
                     new File(path).delete();
                     removePanel(act, layout);
                     return;
@@ -274,6 +278,20 @@ public class FloatingPanel {
                 setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
             }
             trigger.setEnabled(true);
+        }
+    }
+
+    private static void playSuccessSound(Context context) {
+        try {
+            android.net.Uri soundUri = RingtoneManager.getDefaultUri(
+                    RingtoneManager.TYPE_NOTIFICATION);
+            MediaPlayer mp = MediaPlayer.create(context, soundUri);
+            if (mp != null) {
+                mp.setOnCompletionListener(MediaPlayer::release);
+                mp.setOnErrorListener((m, what, extra) -> { m.release(); return true; });
+                mp.start();
+            }
+        } catch (Exception ignored) {
         }
     }
 
