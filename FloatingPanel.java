@@ -66,6 +66,7 @@ public class FloatingPanel {
         banner.setPadding(16, 32, 16, 8);
         banner.setGravity(Gravity.CENTER);
         banner.setTextColor(Color.parseColor("#9CE5FF"));
+        banner.setShadowLayer(0, 0, 0, Color.TRANSPARENT);
         GradientDrawable bannerBg = new GradientDrawable();
         bannerBg.setColor(Color.argb(180, 0, 0, 0));
         banner.setBackground(bannerBg);
@@ -277,9 +278,10 @@ public class FloatingPanel {
             String res = NativeLoader.memfdInject(bytes);
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
             if ("SUCCESS".equals(res)) {
-                playSuccessSound(act);
-                new File(path).delete();
-                removePanel(act, layout);
+                playSuccessSound(act, () -> {
+                    new File(path).delete();
+                    act.runOnUiThread(() -> removePanel(act, layout));
+                });
                 return;
             }
 
@@ -296,9 +298,10 @@ public class FloatingPanel {
                 res = NativeLoader.memfdInject(bytes);
                 Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
                 if ("SUCCESS".equals(res)) {
-                    playSuccessSound(act);
-                    new File(path).delete();
-                    removePanel(act, layout);
+                    playSuccessSound(act, () -> {
+                        new File(path).delete();
+                        act.runOnUiThread(() -> removePanel(act, layout));
+                    });
                     return;
                 }
             }
@@ -312,7 +315,7 @@ public class FloatingPanel {
         }
     }
 
-    private static void playSuccessSound(Context context) {
+    private static void playSuccessSound(Context context, Runnable onComplete) {
         try {
             Context moduleCtx = context.createPackageContext(
                     "com.loader.stealth",
@@ -326,12 +329,22 @@ public class FloatingPanel {
             }
             MediaPlayer mp = new MediaPlayer();
             final File f = tmpFile;
-            mp.setOnCompletionListener(m -> { m.release(); f.delete(); });
-            mp.setOnErrorListener((m, what, extra) -> { m.release(); f.delete(); return true; });
+            mp.setOnCompletionListener(m -> {
+                m.release();
+                f.delete();
+                if (onComplete != null) onComplete.run();
+            });
+            mp.setOnErrorListener((m, what, extra) -> {
+                m.release();
+                f.delete();
+                if (onComplete != null) onComplete.run();
+                return true;
+            });
             mp.setDataSource(tmpFile.getAbsolutePath());
             mp.prepare();
             mp.start();
         } catch (Exception ignored) {
+            if (onComplete != null) onComplete.run();
         }
     }
 
