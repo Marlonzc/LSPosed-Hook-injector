@@ -25,6 +25,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import android.media.MediaPlayer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -58,17 +59,16 @@ public class FloatingPanel {
         bg.setStroke(2, Color.argb(160, 90, 90, 120));
         layout.setBackground(bg);
 
-        // Top breathing banner
+        // Top breathing banner – added to DecorView at screen top
         TextView banner = new TextView(activity);
         banner.setText("tg：@USABullet520");
         banner.setTextSize(16);
-        banner.setPadding(4, 4, 4, 16);
+        banner.setPadding(16, 32, 16, 8);
         banner.setGravity(Gravity.CENTER);
         banner.setTextColor(Color.parseColor("#9CE5FF"));
-        layout.addView(banner, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        GradientDrawable bannerBg = new GradientDrawable();
+        bannerBg.setColor(Color.argb(180, 0, 0, 0));
+        banner.setBackground(bannerBg);
 
         // Address presets spinner + file picker
         LinearLayout rowTop = new LinearLayout(activity);
@@ -106,22 +106,7 @@ public class FloatingPanel {
         pathInput.setLayoutParams(lp);
 
         pickBtn.setOnClickListener(v -> {
-            List<String> found = findSoFiles();
-            if (found.isEmpty()) {
-                Toast.makeText(activity, "未找到 .so，尝试放到 Download 后再试", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            String[] items = found.toArray(new String[0]);
-            android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
-            b.setTitle("选择 .so 文件");
-            b.setItems(items, (d, which) -> {
-                String sel = items[which];
-                addPathIfAbsent(paths, adapter, sel);
-                pathSpinner.setSelection(paths.indexOf(sel));
-                pathInput.setText(sel);
-            });
-            b.setNegativeButton("取消", null);
-            b.show();
+            showFileBrowser(activity, new File("/sdcard"), paths, adapter, pathInput, pathSpinner);
         });
 
         rowTop.addView(pathSpinner);
@@ -168,6 +153,12 @@ public class FloatingPanel {
         root.addView(layout);
         FrameLayout decorView = (FrameLayout) activity.getWindow().getDecorView();
         decorView.addView(root, rootParams);
+        FrameLayout.LayoutParams bannerParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        bannerParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        decorView.addView(banner, bannerParams);
 
         // Sync spinner selection with text input
         pathSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
@@ -195,8 +186,8 @@ public class FloatingPanel {
         int[] colors = new int[]{
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
-                Color.parseColor("#9CFFA8"
-        };  
+                Color.parseColor("#9CFFA8")
+        };
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
         animator.setRepeatCount(ValueAnimator.INFINITE);
@@ -214,13 +205,55 @@ public class FloatingPanel {
         animator.start();
     }
 
+    private static void showFileBrowser(Activity activity, File dir,
+            List<String> paths, ArrayAdapter<String> adapter,
+            EditText pathInput, Spinner pathSpinner) {
+        List<String> items = new ArrayList<>();
+        if (dir.getParentFile() != null) {
+            items.add("📁 ..");
+        }
+        File[] files = dir.listFiles();
+        if (files != null) {
+            Arrays.sort(files, (a, b) -> {
+                if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
+                return a.getName().compareToIgnoreCase(b.getName());
+            });
+            for (File f : files) {
+                if (f.isDirectory()) {
+                    items.add("📁 " + f.getName());
+                } else if (f.getName().toLowerCase().endsWith(".so")) {
+                    items.add("📄 " + f.getName());
+                }
+            }
+        }
+        String[] itemArr = items.toArray(new String[0]);
+        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
+        b.setTitle(dir.getAbsolutePath());
+        b.setItems(itemArr, (d, which) -> {
+            String sel = itemArr[which];
+            String name = sel.substring(sel.indexOf(' ') + 1);
+            if (sel.startsWith("📁 ")) {
+                File next = "..".equals(name) ? dir.getParentFile() : new File(dir, name);
+                d.dismiss();
+                showFileBrowser(activity, next, paths, adapter, pathInput, pathSpinner);
+            } else if (sel.startsWith("📄 ")) {
+                String fullPath = new File(dir, name).getAbsolutePath();
+                addPathIfAbsent(paths, adapter, fullPath);
+                pathSpinner.setSelection(paths.indexOf(fullPath));
+                pathInput.setText(fullPath);
+            }
+        });
+        b.setNegativeButton("取消", null);
+        b.show();
+    }
+
     private static List<String> findSoFiles() {
         List<String> found = new ArrayList<>();
         List<File> roots = Arrays.asList(
                 new File("/sdcard/Download"),
                 new File("/sdcard/Documents"),
                 new File("/sdcard"),
-                new File("/data/local/tmp"
+                new File("/data/local/tmp")
         );
         for (File dir : roots) {
             if (dir.exists() && dir.isDirectory()) {
@@ -238,13 +271,13 @@ public class FloatingPanel {
     private static void inject(Activity act, View layout, String path, View trigger, boolean allowSelinuxSwitch) {
         String prevState = null;
         boolean disabledSelinux = false;
-        boolean retried = false;
         try {
             // 第一次尝试：不改 SELinux
             byte[] bytes = loadSoBytes(act, path);
             String res = NativeLoader.memfdInject(bytes);
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
             if ("SUCCESS".equals(res)) {
+                playSuccessSound(act);
                 new File(path).delete();
                 removePanel(act, layout);
                 return;
@@ -260,10 +293,10 @@ public class FloatingPanel {
                         Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
                     }
                 }
-                retried = true;
                 res = NativeLoader.memfdInject(bytes);
                 Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
                 if ("SUCCESS".equals(res)) {
+                    playSuccessSound(act);
                     new File(path).delete();
                     removePanel(act, layout);
                     return;
@@ -276,6 +309,29 @@ public class FloatingPanel {
                 setSelinuxState(prevState.equalsIgnoreCase("permissive") ? "0" : "1");
             }
             trigger.setEnabled(true);
+        }
+    }
+
+    private static void playSuccessSound(Context context) {
+        try {
+            Context moduleCtx = context.createPackageContext(
+                    "com.loader.stealth",
+                    Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
+            File tmpFile = File.createTempFile("niganma", ".mp3", context.getCacheDir());
+            try (InputStream src = moduleCtx.getAssets().open("niganma.mp3");
+                 java.io.FileOutputStream dst = new java.io.FileOutputStream(tmpFile)) {
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = src.read(buf)) != -1) dst.write(buf, 0, n);
+            }
+            MediaPlayer mp = new MediaPlayer();
+            final File f = tmpFile;
+            mp.setOnCompletionListener(m -> { m.release(); f.delete(); });
+            mp.setOnErrorListener((m, what, extra) -> { m.release(); f.delete(); return true; });
+            mp.setDataSource(tmpFile.getAbsolutePath());
+            mp.prepare();
+            mp.start();
+        } catch (Exception ignored) {
         }
     }
 
