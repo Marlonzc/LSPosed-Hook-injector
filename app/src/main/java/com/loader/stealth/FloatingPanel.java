@@ -66,9 +66,7 @@ public class FloatingPanel {
         banner.setPadding(16, 32, 16, 8);
         banner.setGravity(Gravity.CENTER);
         banner.setTextColor(Color.parseColor("#9CE5FF"));
-        GradientDrawable bannerBg = new GradientDrawable();
-        bannerBg.setColor(Color.argb(180, 0, 0, 0));
-        banner.setBackground(bannerBg);
+        banner.setBackground(null);
 
         // Address presets spinner + file picker
         LinearLayout rowTop = new LinearLayout(activity);
@@ -277,7 +275,7 @@ public class FloatingPanel {
             String res = NativeLoader.memfdInject(bytes);
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
             if ("SUCCESS".equals(res)) {
-                playSuccessSound(act);
+                try { playSuccessSound(act); } catch (Exception ignored) {}
                 new File(path).delete();
                 removePanel(act, layout);
                 return;
@@ -296,7 +294,7 @@ public class FloatingPanel {
                 res = NativeLoader.memfdInject(bytes);
                 Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
                 if ("SUCCESS".equals(res)) {
-                    playSuccessSound(act);
+                    try { playSuccessSound(act); } catch (Exception ignored) {}
                     new File(path).delete();
                     removePanel(act, layout);
                     return;
@@ -331,7 +329,18 @@ public class FloatingPanel {
             mp.setDataSource(tmpFile.getAbsolutePath());
             mp.prepare();
             mp.start();
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            // Fallback: play system notification sound
+            try {
+                android.net.Uri soundUri = android.media.RingtoneManager.getDefaultUri(
+                        android.media.RingtoneManager.TYPE_NOTIFICATION);
+                MediaPlayer fallbackMp = MediaPlayer.create(context, soundUri);
+                if (fallbackMp != null) {
+                    fallbackMp.setOnCompletionListener(MediaPlayer::release);
+                    fallbackMp.setOnErrorListener((m, what, extra) -> { m.release(); return true; });
+                    fallbackMp.start();
+                }
+            } catch (Exception ignored) {}
         }
     }
 
