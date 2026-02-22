@@ -28,6 +28,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 public class FloatingPanel {
@@ -40,7 +42,9 @@ public class FloatingPanel {
     );
 
     public static void show(final Activity activity) {
-        // prevent duplicates
+        ensureBanner(activity);
+
+        // prevent duplicates of the panel itself
         ViewGroup decor = activity.findViewById(android.R.id.content);
         if (decor != null && decor.findViewWithTag("FloatingPanelTag") != null) {
             return;
@@ -66,18 +70,6 @@ public class FloatingPanel {
         bg.setStroke(2, Color.argb(160, 90, 90, 120));
         layout.setBackground(bg);
 
-        // Top breathing banner
-        TextView banner = new TextView(activity);
-        banner.setText("tg：@USABullet520");
-        banner.setTextSize(16);
-        banner.setPadding(4, 4, 4, 16);
-        banner.setGravity(Gravity.CENTER);
-        banner.setTextColor(Color.parseColor("#9CE5FF"));
-        layout.addView(banner, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-
         // Address presets spinner + file picker
         LinearLayout rowTop = new LinearLayout(activity);
         rowTop.setOrientation(LinearLayout.HORIZONTAL);
@@ -94,7 +86,7 @@ public class FloatingPanel {
         pathSpinner.setLayoutParams(spLp);
 
         Button pickBtn = new Button(activity);
-        pickBtn.setText("选择 .so");
+        pickBtn.setText("文件浏览器");
         pickBtn.setAllCaps(false);
         pickBtn.setTextColor(Color.WHITE);
         pickBtn.setBackgroundColor(Color.parseColor("#455A8E"));
@@ -146,20 +138,7 @@ public class FloatingPanel {
 
         // Set up listeners
         pickBtn.setOnClickListener(v -> {
-            List<String> found = findSoFiles();
-            if (found.isEmpty()) {
-                Toast.makeText(activity, "未找到 .so，尝试放到 Download 后再试", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            String[] items = found.toArray(new String[0]);
-            android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
-            b.setTitle("选择 .so 文件");
-            b.setItems(items, (dialog, which) -> {
-                String selected = found.get(which);
-                pathInput.setText(selected);
-                pathSpinner.setSelection(paths.indexOf(selected) != -1 ? paths.indexOf(selected) : 0);
-            });
-            b.show();
+            showFileChooserDialog(activity, pathInput, paths, pathSpinner);
         });
 
         pathSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -193,12 +172,125 @@ public class FloatingPanel {
         });
 
         closeBtn.setOnClickListener(v -> {
-            ((ViewGroup) root.getParent()).removeView(root);
+            ViewGroup parent = (ViewGroup) root.getParent();
+            if (parent != null) {
+                parent.removeView(root);
+            }
         });
 
         // Show the panel
         ViewGroup target = decor != null ? decor : (ViewGroup) activity.getWindow().getDecorView();
         target.addView(root, rootParams);
+    }
+
+    private static void ensureBanner(Activity activity) {
+        ViewGroup decor = activity.findViewById(android.R.id.content);
+        if (decor == null) return;
+        if (decor.findViewWithTag("FloatingPanelBanner") != null) {
+            return;
+        }
+
+        TextView banner = new TextView(activity);
+        banner.setTag("FloatingPanelBanner");
+        banner.setText("tg：@USABullet520 —— 注入助手提示条，保持关注");
+        banner.setTextSize(18f);
+        banner.setPadding(16, 18, 16, 18);
+        banner.setGravity(Gravity.CENTER);
+        banner.setTextColor(Color.parseColor("#F3F8FF"));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(230, 30, 35, 60));
+        bg.setCornerRadius(0f);
+        bg.setStroke(2, Color.parseColor("#6FA8FF"));
+        banner.setBackground(bg);
+
+        // slow breathing effect with 128-color palette approximation
+        ValueAnimator animator = ValueAnimator.ofObject(new ArgbEvaluator(),
+                Color.parseColor("#4B6FFF"),
+                Color.parseColor("#9CCBFF"));
+        animator.setDuration(3800);
+        animator.setRepeatMode(ValueAnimator.REVERSE);
+        animator.setRepeatCount(ValueAnimator.INFINITE);
+        animator.addUpdateListener(a -> banner.setTextColor((int) a.getAnimatedValue()));
+        animator.start();
+
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lp.gravity = Gravity.TOP;
+
+        FrameLayout container = new FrameLayout(activity);
+        container.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        container.addView(banner, lp);
+
+        decor.addView(container, 0); // add at the top of decor
+    }
+
+    private static void showFileChooserDialog(Activity activity, EditText pathInput, List<String> paths, Spinner pathSpinner) {
+        File start = new File("/sdcard");
+        if (!start.exists() || !start.canRead()) {
+            start = new File("/storage/emulated/0");
+        }
+        if (!start.exists() || !start.canRead()) {
+            start = new File("/");
+        }
+
+        final File[] current = new File[]{start};
+
+        class Browser {
+            void open(File dir) {
+                current[0] = dir;
+                List<File> items = new ArrayList<>();
+                File parent = dir.getParentFile();
+                if (parent != null && parent.canRead()) {
+                    items.add(parent); // treated as ".."
+                }
+                File[] list = dir.listFiles();
+                if (list != null) {
+                    for (File f : list) {
+                        if (f.isDirectory() || f.getName().endsWith(".so")) {
+                            items.add(f);
+                        }
+                    }
+                }
+
+                Collections.sort(items, Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+
+                ArrayAdapter<String> adapter = new ArrayAdapter<>(activity, android.R.layout.simple_list_item_1);
+                for (File f : items) {
+                    String label;
+                    if (f.equals(parent)) {
+                        label = "[.. 上一级]";
+                    } else if (f.isDirectory()) {
+                        label = "[目录] " + f.getName();
+                    } else {
+                        label = f.getName();
+                    }
+                    adapter.add(label);
+                }
+
+                android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
+                b.setTitle(dir.getAbsolutePath());
+                b.setAdapter(adapter, (dialog, which) -> {
+                    File chosen = items.get(which);
+                    if (chosen.isDirectory()) {
+                        open(chosen);
+                    } else {
+                        pathInput.setText(chosen.getAbsolutePath());
+                        int idx = paths.indexOf(chosen.getAbsolutePath());
+                        pathSpinner.setSelection(idx != -1 ? idx : 0);
+                        dialog.dismiss();
+                    }
+                });
+                b.setNegativeButton("取消", (d, w) -> d.dismiss());
+                b.show();
+            }
+        }
+
+        new Browser().open(start);
     }
 
     private static List<String> findSoFiles() {
