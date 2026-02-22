@@ -195,7 +195,7 @@ public class FloatingPanel {
         int[] colors = new int[]{
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
-                Color.parseColor("#9CFFA8"
+                Color.parseColor("#9CFFA8")
         );
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
@@ -220,7 +220,7 @@ public class FloatingPanel {
                 new File("/sdcard/Download"),
                 new File("/sdcard/Documents"),
                 new File("/sdcard"),
-                new File("/data/local/tmp"
+                new File("/data/local/tmp")
         );
         for (File dir : roots) {
             if (dir.exists() && dir.isDirectory()) {
