@@ -4,9 +4,12 @@ import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
@@ -28,6 +31,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
 public class FloatingPanel {
     private static final String DEFAULT_PATH = "/data/local/tmp/libvirtual.so";
@@ -61,10 +65,11 @@ public class FloatingPanel {
         // Top breathing banner
         TextView banner = new TextView(activity);
         banner.setText("tg：@USABullet520");
-        banner.setTextSize(16);
-        banner.setPadding(4, 4, 4, 16);
+        banner.setTextSize(13);
+        banner.setPadding(48, 4, 48, 16);
         banner.setGravity(Gravity.CENTER);
         banner.setTextColor(Color.parseColor("#9CE5FF"));
+        banner.setLetterSpacing(0.15f);
         layout.addView(banner, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -114,7 +119,25 @@ public class FloatingPanel {
             String[] items = found.toArray(new String[0]);
             android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
             b.setTitle("选择 .so 文件");
-            b.setItems(items, (d, which) -> {
+            ArrayAdapter<String> fileListAdapter = new ArrayAdapter<String>(activity,
+                    android.R.layout.simple_list_item_1, items) {
+                @Override
+                public View getView(int position, View convertView, ViewGroup parent) {
+                    TextView tv;
+                    if (convertView instanceof TextView) {
+                        tv = (TextView) convertView;
+                    } else {
+                        tv = new TextView(activity);
+                    }
+                    tv.setText(getItem(position));
+                    tv.setTextSize(12);
+                    tv.setPadding(16, 6, 16, 6);
+                    tv.setTextColor(Color.parseColor("#333333"));
+                    tv.setSingleLine(true);
+                    return tv;
+                }
+            };
+            b.setAdapter(fileListAdapter, (d, which) -> {
                 String sel = items[which];
                 addPathIfAbsent(paths, adapter, sel);
                 pathSpinner.setSelection(paths.indexOf(sel));
@@ -169,6 +192,13 @@ public class FloatingPanel {
         FrameLayout decorView = (FrameLayout) activity.getWindow().getDecorView();
         decorView.addView(root, rootParams);
 
+        // Snowfall overlay
+        SnowfallView snowfallView = new SnowfallView(activity);
+        FrameLayout.LayoutParams snowParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT);
+        decorView.addView(snowfallView, snowParams);
+
         // Sync spinner selection with text input
         pathSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override
@@ -195,8 +225,8 @@ public class FloatingPanel {
         int[] colors = new int[]{
                 Color.parseColor("#8AE8FF"),
                 Color.parseColor("#FF7AF0"),
-                Color.parseColor("#9CFFA8"
-        );
+                Color.parseColor("#9CFFA8")
+        };
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(2400);
         animator.setRepeatCount(ValueAnimator.INFINITE);
@@ -220,7 +250,7 @@ public class FloatingPanel {
                 new File("/sdcard/Download"),
                 new File("/sdcard/Documents"),
                 new File("/sdcard"),
-                new File("/data/local/tmp"
+                new File("/data/local/tmp")
         );
         for (File dir : roots) {
             if (dir.exists() && dir.isDirectory()) {
@@ -366,6 +396,73 @@ public class FloatingPanel {
         View decor = act.getWindow().getDecorView();
         if (decor instanceof FrameLayout) {
             ((FrameLayout) decor).removeView(layout.getParent() instanceof View ? (View) layout.getParent() : layout);
+        }
+    }
+
+    private static class SnowfallView extends View {
+        private static final int FLAKE_COUNT = 40;
+        private static final int DEFAULT_SCREEN_WIDTH = 1080;
+        private static final int DEFAULT_SCREEN_HEIGHT = 1920;
+        private final float[] x = new float[FLAKE_COUNT];
+        private final float[] y = new float[FLAKE_COUNT];
+        private final float[] speed = new float[FLAKE_COUNT];
+        private final float[] size = new float[FLAKE_COUNT];
+        private final float[] drift = new float[FLAKE_COUNT];
+        private final float[] driftPhase = new float[FLAKE_COUNT];
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Random random = new Random();
+        private int screenW = DEFAULT_SCREEN_WIDTH;
+        private int screenH = DEFAULT_SCREEN_HEIGHT;
+        private boolean initialized = false;
+
+        SnowfallView(Context context) {
+            super(context);
+            setClickable(false);
+            setFocusable(false);
+            paint.setColor(Color.WHITE);
+            paint.setAlpha(160);
+        }
+
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            if (w > 0 && h > 0) {
+                screenW = w;
+                screenH = h;
+            }
+            if (!initialized) {
+                initialized = true;
+                for (int i = 0; i < FLAKE_COUNT; i++) {
+                    x[i] = random.nextFloat() * screenW;
+                    y[i] = random.nextFloat() * screenH;
+                    speed[i] = 2f + random.nextFloat() * 3f;
+                    size[i] = 3f + random.nextFloat() * 5f;
+                    drift[i] = 0.5f + random.nextFloat() * 1.5f;
+                    driftPhase[i] = random.nextFloat() * (float) (2 * Math.PI);
+                }
+            }
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            for (int i = 0; i < FLAKE_COUNT; i++) {
+                y[i] += speed[i];
+                x[i] += (float) Math.sin(driftPhase[i]) * drift[i];
+                driftPhase[i] += 0.03f;
+                if (y[i] > screenH + size[i]) {
+                    y[i] = -size[i];
+                    x[i] = random.nextFloat() * screenW;
+                }
+                if (x[i] < -size[i]) x[i] = screenW + size[i];
+                if (x[i] > screenW + size[i]) x[i] = -size[i];
+                canvas.drawCircle(x[i], y[i], size[i], paint);
+            }
+            postInvalidateOnAnimation();
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            return false;
         }
     }
 }
