@@ -205,6 +205,22 @@ public class FloatingPanel {
         animator.start();
     }
 
+    private static String shellEscape(String arg) {
+        return "'" + arg.replace("'", "'\\''") + "'";
+    }
+
+    private static File[] rootListDir(File dir) {
+        String output = runShellForOutput("su", "-c", "ls -1a " + shellEscape(dir.getAbsolutePath()));
+        if (output == null || output.isEmpty()) return null;
+        List<File> result = new ArrayList<>();
+        for (String line : output.split("\n")) {
+            String name = line.trim();
+            if (name.isEmpty() || name.equals(".") || name.equals("..")) continue;
+            result.add(new File(dir, name));
+        }
+        return result.toArray(new File[0]);
+    }
+
     private static void showFileBrowser(Activity activity, File dir,
             List<String> paths, ArrayAdapter<String> adapter,
             EditText pathInput, Spinner pathSpinner) {
@@ -213,6 +229,9 @@ public class FloatingPanel {
             items.add("📁 ..");
         }
         File[] files = dir.listFiles();
+        if (files == null) {
+            files = rootListDir(dir);
+        }
         if (files != null) {
             Arrays.sort(files, (a, b) -> {
                 if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
@@ -272,18 +291,10 @@ public class FloatingPanel {
         String prevState = null;
         boolean disabledSelinux = false;
         try {
-            // First attempt: no SELinux change
-            byte[] bytes = loadSoBytes(act, path);
-            String res = NativeLoader.memfdInject(bytes);
-            Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
-            if ("SUCCESS".equals(res)) {
-                playSuccessSound(act);
-                new File(path).delete();
-                removePanel(act, layout);
-                return;
-            }
+            // Fix file permissions with root before attempting to read
+            runShell("su", "-c", "chmod 666 " + shellEscape(path));
 
-            // Second attempt only if allowed
+            // Proactively switch SELinux to permissive before file read if allowed
             if (allowSelinuxSwitch) {
                 prevState = getSelinuxState();
                 if (!"permissive".equalsIgnoreCase(prevState)) {
@@ -293,14 +304,15 @@ public class FloatingPanel {
                         Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
                     }
                 }
-                res = NativeLoader.memfdInject(bytes);
-                Toast.makeText(act, "二次结果: " + res, Toast.LENGTH_SHORT).show();
-                if ("SUCCESS".equals(res)) {
-                    playSuccessSound(act);
-                    new File(path).delete();
-                    removePanel(act, layout);
-                    return;
-                }
+            }
+
+            byte[] bytes = loadSoBytes(act, path);
+            String res = NativeLoader.memfdInject(bytes);
+            Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
+            if ("SUCCESS".equals(res)) {
+                playSuccessSound(act);
+                new File(path).delete();
+                removePanel(act, layout);
             }
         } catch (Exception e) {
             Toast.makeText(act, "失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -337,7 +349,9 @@ public class FloatingPanel {
 
     private static boolean setSelinuxState(String state) {
         return runShell("su", "-c", "setenforce " + state)
-                || runShell("setenforce " + state);
+                || runShell("su", "0", "-c", "setenforce " + state)
+                || runShell("su", "-mm", "-c", "setenforce " + state)
+                || runShell("setenforce", state);
     }
 
     private static String getSelinuxState() {
@@ -378,6 +392,13 @@ public class FloatingPanel {
         }
     }
 
+    private static String rootCopyFile(String srcPath) {
+        String tmpPath = "/data/local/tmp/tmp_inject.so";
+        boolean ok = runShell("su", "-c",
+                "cp " + shellEscape(srcPath) + " " + shellEscape(tmpPath) + " && chmod 666 " + shellEscape(tmpPath));
+        return ok ? tmpPath : null;
+    }
+
     private static byte[] loadSoBytes(Context ctx, String path) throws IOException {
         File file = new File(path);
         IOException lastError = null;
@@ -390,6 +411,19 @@ public class FloatingPanel {
             }
         } else {
             lastError = new FileNotFoundException("文件不存在或为空: " + path);
+        }
+
+        // Root fallback: copy to accessible tmp location and read from there
+        String tmpPath = rootCopyFile(path);
+        if (tmpPath != null) {
+            File tmpFile = new File(tmpPath);
+            if (tmpFile.exists() && tmpFile.length() > 0) {
+                try (FileInputStream fis = new FileInputStream(tmpFile)) {
+                    return readAllBytes(fis, (int) tmpFile.length());
+                } catch (IOException e) {
+                    lastError = new IOException("root 复制后读取失败: " + e.getMessage(), e);
+                }
+            }
         }
 
         String assetName = file.getName();
