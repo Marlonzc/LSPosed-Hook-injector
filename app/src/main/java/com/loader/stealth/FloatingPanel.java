@@ -304,7 +304,7 @@ public class FloatingPanel {
                     if (setSelinuxState("0")) {
                         disabledSelinux = true;
                     } else {
-                        Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(act, "SELinux 切换失败，尝试继续注入...", Toast.LENGTH_SHORT).show();
                     }
                 }
             }
@@ -351,16 +351,31 @@ public class FloatingPanel {
     }
 
     private static boolean setSelinuxState(String state) {
-        return runShell("su", "-c", "setenforce " + state)
-                || runShell("su", "0", "-c", "setenforce " + state)
-                || runShell("su", "-mm", "-c", "setenforce " + state)
-                || runShell("setenforce", state);
+        if (!"0".equals(state) && !"1".equals(state)) return false;
+        if (runShellCmd("setenforce " + state)) return true;
+        if (runShell("su", "-c", "setenforce " + state)) return true;
+        if (runShell("su", "0", "-c", "setenforce " + state)) return true;
+        if (runShell("su", "root", "-c", "setenforce " + state)) return true;
+        if (runShell("su", "-mm", "-c", "setenforce " + state)) return true;
+        if (runShell("su", "0", "setenforce", state)) return true;
+        if (runShellCmd("sh -c 'setenforce " + state + "'")) return true;
+        if (runShellCmd("echo " + state + " > /sys/fs/selinux/enforce")) return true;
+        if (runShellCmd("echo " + state + " > /selinux/enforce")) return true;
+        if (runShell("setenforce", state)) return true;
+        if (runShellCmd("nsenter -t 1 -m -- setenforce " + state)) return true;
+        return false;
     }
 
     private static String getSelinuxState() {
         String res = runShellForOutput("getenforce");
-        if (res == null) return "";
-        return res.trim();
+        if (res != null && !res.trim().isEmpty()) return res.trim();
+        res = runShellForOutput("su", "-c", "getenforce");
+        if (res != null && !res.trim().isEmpty()) return res.trim();
+        res = runShellForOutput("su", "-c", "cat /sys/fs/selinux/enforce");
+        if (res != null && !res.trim().isEmpty()) {
+            return "0".equals(res.trim()) ? "Permissive" : "Enforcing";
+        }
+        return "";
     }
 
     private static boolean runShell(String... cmd) {
@@ -368,8 +383,34 @@ public class FloatingPanel {
             Process p = new ProcessBuilder(cmd)
                     .redirectErrorStream(true)
                     .start();
-            int code = p.waitFor();
-            return code == 0;
+            try (InputStream is = p.getInputStream()) {
+                byte[] buf = new byte[1024];
+                while (is.read(buf) != -1) {}
+            }
+            boolean finished = p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return false;
+            }
+            return p.exitValue() == 0;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static boolean runShellCmd(String fullCmd) {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", fullCmd});
+            try (InputStream is = p.getInputStream()) {
+                byte[] buf = new byte[1024];
+                while (is.read(buf) != -1) {}
+            }
+            boolean finished = p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return false;
+            }
+            return p.exitValue() == 0;
         } catch (Exception ignored) {
             return false;
         }
@@ -388,7 +429,11 @@ public class FloatingPanel {
                     baos.write(buf, 0, n);
                 }
             }
-            p.waitFor();
+            boolean finished = p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return null;
+            }
             return baos.toString();
         } catch (Exception ignored) {
             return null;
