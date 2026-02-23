@@ -210,13 +210,19 @@ public class FloatingPanel {
     }
 
     private static File[] rootListDir(File dir) {
-        String output = runShellForOutput("su", "-c", "ls -1a " + shellEscape(dir.getAbsolutePath()));
+        // Use -F to append '/' for directories, making type detection reliable
+        String output = runShellForOutput("su", "-c", "ls -1Fa " + shellEscape(dir.getAbsolutePath()));
         if (output == null || output.isEmpty()) return null;
         List<File> result = new ArrayList<>();
         for (String line : output.split("\n")) {
-            String name = line.trim();
-            if (name.isEmpty() || name.equals(".") || name.equals("..")) continue;
-            result.add(new File(dir, name));
+            String entry = line.trim();
+            if (entry.isEmpty() || entry.equals("./") || entry.equals("../")
+                    || entry.equals(".") || entry.equals("..")) continue;
+            boolean isDir = entry.endsWith("/");
+            boolean isLink = entry.endsWith("@");
+            String name = (isDir || isLink) ? entry.substring(0, entry.length() - 1) : entry;
+            if (name.isEmpty()) continue;
+            result.add(new RootFile(dir, name, isDir, 0));
         }
         return result.toArray(new File[0]);
     }
@@ -240,17 +246,80 @@ public class FloatingPanel {
             for (File f : files) {
                 if (f.isDirectory()) {
                     items.add("📁 " + f.getName());
-                } else if (f.getName().toLowerCase().endsWith(".so")) {
-                    items.add("📄 " + f.getName());
+                } else {
+                    String lower = f.getName().toLowerCase();
+                    if (lower.endsWith(".so") || lower.endsWith(".dex") || lower.endsWith(".apk")
+                            || lower.endsWith(".jar") || lower.endsWith(".bin")) {
+                        long sz = f.length();
+                        items.add("📄 " + f.getName() + formatSize(sz));
+                    }
                 }
             }
         }
-        String[] itemArr = items.toArray(new String[0]);
+        // Friendly message when no usable files found
+        boolean hasFiles = false;
+        for (String item : items) {
+            if (item.startsWith("📄 ")) { hasFiles = true; break; }
+        }
+        if (!hasFiles) {
+            items.add("⚠️ 此目录无可用文件（尝试搜索全盘）");
+        }
+
+        final String[] itemArr = items.toArray(new String[0]);
+
+        // Build custom title view with shortcut buttons
+        LinearLayout titleView = new LinearLayout(activity);
+        titleView.setOrientation(LinearLayout.VERTICAL);
+        titleView.setPadding(16, 16, 16, 0);
+
+        TextView titleText = new TextView(activity);
+        titleText.setText(dir.getAbsolutePath());
+        titleText.setTextSize(13);
+        titleText.setPadding(0, 0, 0, 8);
+        titleView.addView(titleText);
+
+        LinearLayout shortcuts = new LinearLayout(activity);
+        shortcuts.setOrientation(LinearLayout.HORIZONTAL);
+        shortcuts.setWeightSum(3f);
+
+        Button btnDl = new Button(activity);
+        btnDl.setText("📥 下载");
+        btnDl.setTextSize(11);
+        btnDl.setAllCaps(false);
+        btnDl.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        shortcuts.addView(btnDl);
+
+        Button btnTmp = new Button(activity);
+        btnTmp.setText("📁 /data/local/tmp");
+        btnTmp.setTextSize(11);
+        btnTmp.setAllCaps(false);
+        btnTmp.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        shortcuts.addView(btnTmp);
+
+        Button btnSearch = new Button(activity);
+        btnSearch.setText("🔍 搜索全盘 .so");
+        btnSearch.setTextSize(11);
+        btnSearch.setAllCaps(false);
+        btnSearch.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        shortcuts.addView(btnSearch);
+
+        titleView.addView(shortcuts);
+
         android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
-        b.setTitle(dir.getAbsolutePath());
+        b.setCustomTitle(titleView);
         b.setItems(itemArr, (d, which) -> {
             String sel = itemArr[which];
+            if (sel.startsWith("⚠️")) return;
+            // Find the first space (after the 2-char emoji + space prefix) to extract the file name
             String name = sel.substring(sel.indexOf(' ') + 1);
+            // Strip size suffix " (123 KB)" if present
+            int parenIdx = name.lastIndexOf(" (");
+            if (parenIdx > 0 && name.endsWith(")")) {
+                name = name.substring(0, parenIdx);
+            }
             if (sel.startsWith("📁 ")) {
                 File next = "..".equals(name) ? dir.getParentFile() : new File(dir, name);
                 d.dismiss();
@@ -263,7 +332,47 @@ public class FloatingPanel {
             }
         });
         b.setNegativeButton("取消", null);
-        b.show();
+
+        final android.app.AlertDialog[] dialogRef = {null};
+        btnDl.setOnClickListener(v -> {
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+            showFileBrowser(activity, new File("/sdcard/Download"), paths, adapter, pathInput, pathSpinner);
+        });
+        btnTmp.setOnClickListener(v -> {
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+            showFileBrowser(activity, new File("/data/local/tmp"), paths, adapter, pathInput, pathSpinner);
+        });
+        btnSearch.setOnClickListener(v -> {
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+            showRootSearchDialog(activity, paths, adapter, pathInput, pathSpinner);
+        });
+
+        dialogRef[0] = b.show();
+    }
+
+    private static void showRootSearchDialog(Activity activity, List<String> paths,
+            ArrayAdapter<String> adapter, EditText pathInput, Spinner pathSpinner) {
+        Toast.makeText(activity, "正在搜索 .so 文件...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            List<String> found = rootFindAllSo();
+            activity.runOnUiThread(() -> {
+                if (found.isEmpty()) {
+                    Toast.makeText(activity, "未找到 .so 文件", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                String[] items = found.toArray(new String[0]);
+                new android.app.AlertDialog.Builder(activity)
+                        .setTitle("🔍 找到 " + found.size() + " 个 .so 文件")
+                        .setItems(items, (d, which) -> {
+                            String fullPath = items[which];
+                            addPathIfAbsent(paths, adapter, fullPath);
+                            pathSpinner.setSelection(paths.indexOf(fullPath));
+                            pathInput.setText(fullPath);
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
+            });
+        }).start();
     }
 
     private static List<String> findSoFiles() {
@@ -280,6 +389,17 @@ public class FloatingPanel {
                 if (files != null) {
                     for (File f : files) {
                         found.add(f.getAbsolutePath());
+                    }
+                } else {
+                    // Root fallback when listFiles() returns null (Android 11+ permission restrictions)
+                    String out = runShellForOutput("su", "-c",
+                            "find " + shellEscape(dir.getAbsolutePath())
+                                    + " -maxdepth 1 -name '*.so' -type f 2>/dev/null");
+                    if (out != null && !out.isEmpty()) {
+                        for (String line : out.split("\n")) {
+                            String p = line.trim();
+                            if (!p.isEmpty()) found.add(p);
+                        }
                     }
                 }
             }
@@ -311,7 +431,11 @@ public class FloatingPanel {
             Toast.makeText(act, "结果: " + res, Toast.LENGTH_SHORT).show();
             if ("SUCCESS".equals(res)) {
                 playSuccessSound(act);
-                new File(path).delete();
+                if (!new File(path).delete()) {
+                    runShell("su", "-c", "rm -f " + shellEscape(path));
+                }
+                // Clean up tmp copy
+                runShell("su", "-c", "rm -f /data/local/tmp/tmp_inject.so");
                 removePanel(act, layout);
             }
         } catch (Exception e) {
@@ -426,6 +550,12 @@ public class FloatingPanel {
             }
         }
 
+        // Additional fallback: read file bytes directly through root process stdout
+        byte[] catBytes = runShellForBytes("su", "-c", "cat " + shellEscape(path));
+        if (catBytes != null && catBytes.length > 0) {
+            return catBytes;
+        }
+
         String assetName = file.getName();
         try (InputStream is = ctx.getAssets().open(assetName)) {
             return readAllBytes(is, -1);
@@ -439,9 +569,11 @@ public class FloatingPanel {
     private static byte[] readAllBytes(InputStream is, int expectedSize) throws IOException {
         if (expectedSize >= 0) {
             byte[] buf = new byte[expectedSize];
-            int read = is.read(buf);
-            if (read != expectedSize) {
-                throw new IOException("读取长度不一致: " + read + " vs " + expectedSize);
+            int offset = 0;
+            while (offset < expectedSize) {
+                int n = is.read(buf, offset, expectedSize - offset);
+                if (n == -1) throw new IOException("读取长度不一致: 期望 " + expectedSize + " 实际 " + offset);
+                offset += n;
             }
             return buf;
         }
@@ -459,5 +591,62 @@ public class FloatingPanel {
         if (decor instanceof FrameLayout) {
             ((FrameLayout) decor).removeView(layout.getParent() instanceof View ? (View) layout.getParent() : layout);
         }
+    }
+
+    private static List<String> rootFindAllSo() {
+        String output = runShellForOutput("su", "-c",
+                "find /sdcard /data/local/tmp -name '*.so' -type f 2>/dev/null");
+        List<String> result = new ArrayList<>();
+        if (output == null || output.isEmpty()) return result;
+        for (String line : output.split("\n")) {
+            String p = line.trim();
+            if (!p.isEmpty()) result.add(p);
+        }
+        return result;
+    }
+
+    private static byte[] runShellForBytes(String... cmd) {
+        try {
+            Process p = new ProcessBuilder(cmd)
+                    .redirectErrorStream(false)
+                    .start();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] buf = new byte[16 * 1024];
+            try (InputStream is = p.getInputStream()) {
+                int n;
+                while ((n = is.read(buf)) != -1) {
+                    baos.write(buf, 0, n);
+                }
+            }
+            p.waitFor();
+            byte[] result = baos.toByteArray();
+            return result.length > 0 ? result : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String formatSize(long bytes) {
+        if (bytes <= 0) return "";
+        if (bytes < 1024) return " (" + bytes + " B)";
+        if (bytes < 1024 * 1024) return " (" + (bytes / 1024) + " KB)";
+        return " (" + (bytes / (1024 * 1024)) + " MB)";
+    }
+
+    /** Wraps a root-listed file entry with cached type/size so isDirectory() works without read permissions. */
+    private static final class RootFile extends File {
+        private final boolean directory;
+        private final long fileSize;
+
+        RootFile(File parent, String name, boolean directory, long fileSize) {
+            super(parent, name);
+            this.directory = directory;
+            this.fileSize = fileSize;
+        }
+
+        @Override public boolean isDirectory() { return directory; }
+        @Override public boolean isFile() { return !directory; }
+        @Override public long length() { return fileSize; }
+        @Override public boolean exists() { return true; }
     }
 }
