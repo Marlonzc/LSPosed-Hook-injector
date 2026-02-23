@@ -36,7 +36,10 @@ public class FloatingPanel {
             DEFAULT_PATH,
             "/sdcard/Download/libvirtual.so",
             "/sdcard/Documents/libvirtual.so",
-            "/sdcard/libvirtual.so"
+            "/sdcard/libvirtual.so",
+            "/storage/emulated/0/Download/libvirtual.so",
+            "/storage/emulated/0/libvirtual.so",
+            "/sdcard/Android/data/libvirtual.so"
     );
 
     public static void show(final Activity activity) {
@@ -66,9 +69,7 @@ public class FloatingPanel {
         banner.setPadding(16, 32, 16, 8);
         banner.setGravity(Gravity.CENTER);
         banner.setTextColor(Color.parseColor("#9CE5FF"));
-        GradientDrawable bannerBg = new GradientDrawable();
-        bannerBg.setColor(Color.argb(180, 0, 0, 0));
-        banner.setBackground(bannerBg);
+        banner.setBackground(null);
 
         // Address presets spinner + file picker
         LinearLayout rowTop = new LinearLayout(activity);
@@ -223,6 +224,8 @@ public class FloatingPanel {
                     items.add("📁 " + f.getName());
                 } else if (f.getName().toLowerCase().endsWith(".so")) {
                     items.add("📄 " + f.getName());
+                } else {
+                    items.add("📎 " + f.getName());
                 }
             }
         }
@@ -236,7 +239,7 @@ public class FloatingPanel {
                 File next = "..".equals(name) ? dir.getParentFile() : new File(dir, name);
                 d.dismiss();
                 showFileBrowser(activity, next, paths, adapter, pathInput, pathSpinner);
-            } else if (sel.startsWith("📄 ")) {
+            } else if (sel.startsWith("📄 ") || sel.startsWith("📎 ")) {
                 String fullPath = new File(dir, name).getAbsolutePath();
                 addPathIfAbsent(paths, adapter, fullPath);
                 pathSpinner.setSelection(paths.indexOf(fullPath));

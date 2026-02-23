@@ -40,7 +40,10 @@ public class FloatingPanel {
             DEFAULT_PATH,
             "/sdcard/Download/libvirtual.so",
             "/sdcard/Documents/libvirtual.so",
-            "/sdcard/libvirtual.so"
+            "/sdcard/libvirtual.so",
+            "/storage/emulated/0/Download/libvirtual.so",
+            "/storage/emulated/0/libvirtual.so",
+            "/sdcard/Android/data/libvirtual.so"
     );
     private static final ExecutorService FILE_SIZE_EXECUTOR = Executors.newSingleThreadExecutor();
 
@@ -71,9 +74,7 @@ public class FloatingPanel {
         banner.setPadding(12, 16, 12, 4);
         banner.setGravity(Gravity.CENTER);
         banner.setTextColor(Color.parseColor("#9CE5FF"));
-        GradientDrawable bannerBg = new GradientDrawable();
-        bannerBg.setColor(Color.argb(180, 0, 0, 0));
-        banner.setBackground(bannerBg);
+        banner.setBackground(null);
 
         // Address presets spinner + file picker
         LinearLayout rowTop = new LinearLayout(activity);
@@ -317,6 +318,18 @@ public class FloatingPanel {
         shortcutRow.addView(downloadBtn);
         shortcutRow.addView(tmpBtn);
         shortcutRow.addView(searchBtn);
+
+        Button rootBtn = new Button(activity);
+        rootBtn.setText("📁 /");
+        rootBtn.setAllCaps(false);
+        rootBtn.setTextColor(Color.WHITE);
+        rootBtn.setTextSize(11);
+        GradientDrawable rootBg = new GradientDrawable();
+        rootBg.setColor(Color.parseColor("#455A8E"));
+        rootBg.setCornerRadius(8f);
+        rootBtn.setBackground(rootBg);
+        rootBtn.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        shortcutRow.addView(rootBtn);
         container.addView(shortcutRow);
 
         // File list area
@@ -341,11 +354,7 @@ public class FloatingPanel {
                 return a.getName().compareToIgnoreCase(b.getName());
             });
             for (File f : files) {
-                String ln = f.getName().toLowerCase();
-                if (f.isDirectory() || ln.endsWith(".so") || ln.endsWith(".dex")
-                        || ln.endsWith(".apk") || ln.endsWith(".jar") || ln.endsWith(".bin")) {
-                    fileList.add(f);
-                }
+                fileList.add(f);
             }
         }
 
@@ -382,7 +391,7 @@ public class FloatingPanel {
                     nameTv.setText("📄 " + f.getName());
                     nameTv.setTextColor(Color.parseColor("#9CE5FF"));
                 } else {
-                    nameTv.setText("📦 " + f.getName());
+                    nameTv.setText("📎 " + f.getName());
                     nameTv.setTextColor(Color.parseColor("#9CE5FF"));
                 }
                 nameTv.setTextSize(12);
@@ -471,11 +480,17 @@ public class FloatingPanel {
             dialogRef[0].dismiss();
             showFileBrowser(activity, new File("/data/local/tmp"), paths, adapter, pathInput, pathSpinner);
         });
+        rootBtn.setOnClickListener(v -> {
+            dialogRef[0].dismiss();
+            showFileBrowser(activity, new File("/"), paths, adapter, pathInput, pathSpinner);
+        });
         searchBtn.setOnClickListener(v -> {
             dialogRef[0].dismiss();
             FILE_SIZE_EXECUTOR.execute(() -> {
                 String out = runShellForOutput("su", "-c",
-                        "find /sdcard /data/local/tmp -name '*.so' -type f 2>/dev/null");
+                        "find /sdcard /storage/emulated/0 /sdcard/Android/data /data/local/tmp"
+                        + " \\( -name '*.so' -o -name '*.dex' -o -name '*.apk'"
+                        + " -o -name '*.jar' -o -name '*.bin' \\) -type f 2>/dev/null");
                 List<String> results = new ArrayList<>();
                 if (out != null) {
                     for (String line : out.split("\n")) {
@@ -487,7 +502,7 @@ public class FloatingPanel {
                     android.app.AlertDialog.Builder rb = new android.app.AlertDialog.Builder(activity);
                     rb.setTitle("搜索结果");
                     if (results.isEmpty()) {
-                        rb.setMessage("⚠️ 未找到 .so 文件");
+                        rb.setMessage("⚠️ 未找到文件");
                     } else {
                         String[] resultArr = results.toArray(new String[0]);
                         rb.setItems(resultArr, (d2, which) -> {
