@@ -26,9 +26,13 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import android.media.MediaPlayer;
+import android.graphics.drawable.ColorDrawable;
+import android.widget.ScrollView;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class FloatingPanel {
     private static final String DEFAULT_PATH = "/data/local/tmp/libvirtual.so";
@@ -38,6 +42,7 @@ public class FloatingPanel {
             "/sdcard/Documents/libvirtual.so",
             "/sdcard/libvirtual.so"
     );
+    private static final ExecutorService FILE_SIZE_EXECUTOR = Executors.newSingleThreadExecutor();
 
     public static void show(final Activity activity) {
         final FrameLayout root = new FrameLayout(activity);
@@ -224,49 +229,281 @@ public class FloatingPanel {
         return result.toArray(new File[0]);
     }
 
+    private static long getFileSizeRoot(File file) {
+        String output = runShellForOutput("su", "-c", "stat -c '%s' " + shellEscape(file.getAbsolutePath()));
+        if (output != null) {
+            try {
+                return Long.parseLong(output.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+        return 0;
+    }
+
+    private static String formatFileSize(long bytes) {
+        if (bytes <= 0) return "";
+        if (bytes < 1024) return bytes + "B";
+        if (bytes < 1024 * 1024) return (bytes / 1024) + "KB";
+        return String.format("%.1fMB", bytes / (1024.0 * 1024.0));
+    }
+
     private static void showFileBrowser(Activity activity, File dir,
             List<String> paths, ArrayAdapter<String> adapter,
             EditText pathInput, Spinner pathSpinner) {
-        List<String> items = new ArrayList<>();
-        if (dir.getParentFile() != null) {
-            items.add("📁 ..");
-        }
+        final android.app.AlertDialog[] dialogRef = {null};
+
+        // Container
+        LinearLayout container = new LinearLayout(activity);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(16, 16, 16, 16);
+        GradientDrawable containerBg = new GradientDrawable();
+        containerBg.setColor(Color.argb(230, 18, 18, 20));
+        containerBg.setCornerRadius(16f);
+        containerBg.setStroke(2, Color.argb(160, 90, 90, 120));
+        container.setBackground(containerBg);
+
+        // Path bar
+        TextView pathBar = new TextView(activity);
+        pathBar.setText(dir.getAbsolutePath());
+        pathBar.setTextColor(Color.parseColor("#9CE5FF"));
+        pathBar.setTextSize(11);
+        pathBar.setPadding(8, 4, 8, 8);
+        container.addView(pathBar);
+
+        // Shortcut buttons row
+        LinearLayout shortcutRow = new LinearLayout(activity);
+        shortcutRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams shortcutRowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shortcutRowLp.setMargins(0, 0, 0, 8);
+        shortcutRow.setLayoutParams(shortcutRowLp);
+
+        Button downloadBtn = new Button(activity);
+        downloadBtn.setText("📥 下载");
+        downloadBtn.setAllCaps(false);
+        downloadBtn.setTextColor(Color.WHITE);
+        downloadBtn.setTextSize(11);
+        GradientDrawable dlBg = new GradientDrawable();
+        dlBg.setColor(Color.parseColor("#455A8E"));
+        dlBg.setCornerRadius(8f);
+        downloadBtn.setBackground(dlBg);
+        LinearLayout.LayoutParams dlLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        dlLp.setMargins(0, 0, 4, 0);
+        downloadBtn.setLayoutParams(dlLp);
+
+        Button tmpBtn = new Button(activity);
+        tmpBtn.setText("📁 /tmp");
+        tmpBtn.setAllCaps(false);
+        tmpBtn.setTextColor(Color.WHITE);
+        tmpBtn.setTextSize(11);
+        GradientDrawable tmpBg = new GradientDrawable();
+        tmpBg.setColor(Color.parseColor("#455A8E"));
+        tmpBg.setCornerRadius(8f);
+        tmpBtn.setBackground(tmpBg);
+        LinearLayout.LayoutParams tmpLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tmpLp.setMargins(0, 0, 4, 0);
+        tmpBtn.setLayoutParams(tmpLp);
+
+        Button searchBtn = new Button(activity);
+        searchBtn.setText("🔍 搜索");
+        searchBtn.setAllCaps(false);
+        searchBtn.setTextColor(Color.WHITE);
+        searchBtn.setTextSize(11);
+        GradientDrawable searchBg = new GradientDrawable();
+        searchBg.setColor(Color.parseColor("#455A8E"));
+        searchBg.setCornerRadius(8f);
+        searchBtn.setBackground(searchBg);
+        searchBtn.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        shortcutRow.addView(downloadBtn);
+        shortcutRow.addView(tmpBtn);
+        shortcutRow.addView(searchBtn);
+        container.addView(shortcutRow);
+
+        // File list area
+        android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+        activity.getWindowManager().getDefaultDisplay().getMetrics(dm);
+        int listHeight = (int) (dm.heightPixels * 0.45);
+        ScrollView scrollView = new ScrollView(activity);
+        scrollView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, listHeight));
+        LinearLayout listLayout = new LinearLayout(activity);
+        listLayout.setOrientation(LinearLayout.VERTICAL);
+        scrollView.addView(listLayout);
+        container.addView(scrollView);
+
+        // Build file list
         File[] files = dir.listFiles();
-        if (files == null) {
-            files = rootListDir(dir);
-        }
+        if (files == null) files = rootListDir(dir);
+        List<File> fileList = new ArrayList<>();
         if (files != null) {
             Arrays.sort(files, (a, b) -> {
                 if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
                 return a.getName().compareToIgnoreCase(b.getName());
             });
             for (File f : files) {
-                if (f.isDirectory()) {
-                    items.add("📁 " + f.getName());
-                } else if (f.getName().toLowerCase().endsWith(".so")) {
-                    items.add("📄 " + f.getName());
+                String ln = f.getName().toLowerCase();
+                if (f.isDirectory() || ln.endsWith(".so") || ln.endsWith(".dex")
+                        || ln.endsWith(".apk") || ln.endsWith(".jar") || ln.endsWith(".bin")) {
+                    fileList.add(f);
                 }
             }
         }
-        String[] itemArr = items.toArray(new String[0]);
-        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(activity);
-        b.setTitle(dir.getAbsolutePath());
-        b.setItems(itemArr, (d, which) -> {
-            String sel = itemArr[which];
-            String name = sel.substring(sel.indexOf(' ') + 1);
-            if (sel.startsWith("📁 ")) {
-                File next = "..".equals(name) ? dir.getParentFile() : new File(dir, name);
-                d.dismiss();
-                showFileBrowser(activity, next, paths, adapter, pathInput, pathSpinner);
-            } else if (sel.startsWith("📄 ")) {
-                String fullPath = new File(dir, name).getAbsolutePath();
-                addPathIfAbsent(paths, adapter, fullPath);
-                pathSpinner.setSelection(paths.indexOf(fullPath));
-                pathInput.setText(fullPath);
+
+        if (fileList.isEmpty()) {
+            TextView emptyTv = new TextView(activity);
+            emptyTv.setText("⚠️ 此目录无可用文件");
+            emptyTv.setTextColor(Color.parseColor("#888888"));
+            emptyTv.setTextSize(12);
+            emptyTv.setPadding(8, 24, 8, 24);
+            emptyTv.setGravity(Gravity.CENTER);
+            listLayout.addView(emptyTv);
+        } else {
+            for (int i = 0; i < fileList.size(); i++) {
+                final File f = fileList.get(i);
+                if (i > 0) {
+                    View divider = new View(activity);
+                    LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, 1);
+                    divider.setLayoutParams(divLp);
+                    divider.setBackgroundColor(Color.argb(40, 255, 255, 255));
+                    listLayout.addView(divider);
+                }
+                LinearLayout itemRow = new LinearLayout(activity);
+                itemRow.setOrientation(LinearLayout.HORIZONTAL);
+                itemRow.setPadding(8, 12, 8, 12);
+                itemRow.setGravity(Gravity.CENTER_VERTICAL);
+
+                TextView nameTv = new TextView(activity);
+                String ln = f.getName().toLowerCase();
+                if (f.isDirectory()) {
+                    nameTv.setText("📁 " + f.getName());
+                    nameTv.setTextColor(Color.parseColor("#C8FACC"));
+                } else if (ln.endsWith(".so")) {
+                    nameTv.setText("📄 " + f.getName());
+                    nameTv.setTextColor(Color.parseColor("#9CE5FF"));
+                } else {
+                    nameTv.setText("📦 " + f.getName());
+                    nameTv.setTextColor(Color.parseColor("#9CE5FF"));
+                }
+                nameTv.setTextSize(12);
+                nameTv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+                TextView sizeTv = new TextView(activity);
+                if (!f.isDirectory()) {
+                    long size = f.length();
+                    if (size == 0) size = getFileSizeRoot(f);
+                    sizeTv.setText(formatFileSize(size));
+                }
+                sizeTv.setTextColor(Color.parseColor("#888888"));
+                sizeTv.setTextSize(11);
+                sizeTv.setGravity(Gravity.END);
+
+                itemRow.addView(nameTv);
+                itemRow.addView(sizeTv);
+                itemRow.setOnClickListener(v -> {
+                    if (dialogRef[0] != null) dialogRef[0].dismiss();
+                    if (f.isDirectory()) {
+                        showFileBrowser(activity, f, paths, adapter, pathInput, pathSpinner);
+                    } else {
+                        String fullPath = f.getAbsolutePath();
+                        addPathIfAbsent(paths, adapter, fullPath);
+                        pathSpinner.setSelection(paths.indexOf(fullPath));
+                        pathInput.setText(fullPath);
+                    }
+                });
+                listLayout.addView(itemRow);
             }
+        }
+
+        // Bottom buttons row
+        LinearLayout bottomRow = new LinearLayout(activity);
+        bottomRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams bottomRowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bottomRowLp.setMargins(0, 8, 0, 0);
+        bottomRow.setLayoutParams(bottomRowLp);
+
+        if (dir.getParentFile() != null) {
+            Button backBtn = new Button(activity);
+            backBtn.setText("返回上级");
+            backBtn.setAllCaps(false);
+            backBtn.setTextColor(Color.WHITE);
+            backBtn.setTextSize(11);
+            GradientDrawable backBg = new GradientDrawable();
+            backBg.setColor(Color.parseColor("#455A8E"));
+            backBg.setCornerRadius(8f);
+            backBtn.setBackground(backBg);
+            LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            backLp.setMargins(0, 0, 4, 0);
+            backBtn.setLayoutParams(backLp);
+            backBtn.setOnClickListener(v -> {
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+                showFileBrowser(activity, dir.getParentFile(), paths, adapter, pathInput, pathSpinner);
+            });
+            bottomRow.addView(backBtn);
+        }
+
+        Button cancelBtn = new Button(activity);
+        cancelBtn.setText("取消");
+        cancelBtn.setAllCaps(false);
+        cancelBtn.setTextColor(Color.WHITE);
+        cancelBtn.setTextSize(11);
+        GradientDrawable cancelBg = new GradientDrawable();
+        cancelBg.setColor(Color.parseColor("#455A8E"));
+        cancelBg.setCornerRadius(8f);
+        cancelBtn.setBackground(cancelBg);
+        cancelBtn.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        cancelBtn.setOnClickListener(v -> { if (dialogRef[0] != null) dialogRef[0].dismiss(); });
+        bottomRow.addView(cancelBtn);
+        container.addView(bottomRow);
+
+        // Create dialog
+        dialogRef[0] = new android.app.AlertDialog.Builder(activity)
+                .setView(container)
+                .create();
+        dialogRef[0].getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+
+        downloadBtn.setOnClickListener(v -> {
+            dialogRef[0].dismiss();
+            showFileBrowser(activity, new File("/sdcard/Download"), paths, adapter, pathInput, pathSpinner);
         });
-        b.setNegativeButton("取消", null);
-        b.show();
+        tmpBtn.setOnClickListener(v -> {
+            dialogRef[0].dismiss();
+            showFileBrowser(activity, new File("/data/local/tmp"), paths, adapter, pathInput, pathSpinner);
+        });
+        searchBtn.setOnClickListener(v -> {
+            dialogRef[0].dismiss();
+            FILE_SIZE_EXECUTOR.execute(() -> {
+                String out = runShellForOutput("su", "-c",
+                        "find /sdcard /data/local/tmp -name '*.so' -type f 2>/dev/null");
+                List<String> results = new ArrayList<>();
+                if (out != null) {
+                    for (String line : out.split("\n")) {
+                        String p = line.trim();
+                        if (!p.isEmpty()) results.add(p);
+                    }
+                }
+                activity.runOnUiThread(() -> {
+                    android.app.AlertDialog.Builder rb = new android.app.AlertDialog.Builder(activity);
+                    rb.setTitle("搜索结果");
+                    if (results.isEmpty()) {
+                        rb.setMessage("⚠️ 未找到 .so 文件");
+                    } else {
+                        String[] resultArr = results.toArray(new String[0]);
+                        rb.setItems(resultArr, (d2, which) -> {
+                            String fp = resultArr[which];
+                            addPathIfAbsent(paths, adapter, fp);
+                            pathSpinner.setSelection(paths.indexOf(fp));
+                            pathInput.setText(fp);
+                        });
+                    }
+                    rb.setNegativeButton("取消", null);
+                    rb.show();
+                });
+            });
+        });
+
+        dialogRef[0].show();
     }
 
     private static List<String> findSoFiles() {
