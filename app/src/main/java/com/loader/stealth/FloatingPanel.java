@@ -32,6 +32,7 @@ import java.util.List;
 
 public class FloatingPanel {
     private static final String DEFAULT_PATH = "/data/local/tmp/libvirtual.so";
+    private static final int SHELL_TIMEOUT_SECONDS = 10;
     private static final List<String> PRESET_PATHS = Arrays.asList(
             DEFAULT_PATH,
             "/sdcard/Download/libvirtual.so",
@@ -290,7 +291,7 @@ public class FloatingPanel {
                     if (setSelinuxState("0")) {
                         disabledSelinux = true;
                     } else {
-                        Toast.makeText(act, "关闭 SELinux 失败，可能无 root", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(act, "SELinux 切换失败，尝试继续注入...", Toast.LENGTH_SHORT).show();
                     }
                 }
                 res = NativeLoader.memfdInject(bytes);
@@ -336,14 +337,46 @@ public class FloatingPanel {
     }
 
     private static boolean setSelinuxState(String state) {
-        return runShell("su", "-c", "setenforce " + state)
-                || runShell("setenforce " + state);
+        // Validate input to prevent shell injection
+        if (!"0".equals(state) && !"1".equals(state)) return false;
+        // 方式1: Runtime.exec su -c（兼容更多 su 实现）
+        if (runShellCmd("setenforce " + state)) return true;
+        // 方式2: ProcessBuilder su -c
+        if (runShell("su", "-c", "setenforce " + state)) return true;
+        // 方式3: su 指定 uid 0
+        if (runShell("su", "0", "-c", "setenforce " + state)) return true;
+        // 方式4: su 指定 root
+        if (runShell("su", "root", "-c", "setenforce " + state)) return true;
+        // 方式5: Magisk mount namespace 隔离模式
+        if (runShell("su", "-mm", "-c", "setenforce " + state)) return true;
+        // 方式6: su 不带 -c，直接传命令
+        if (runShell("su", "0", "setenforce", state)) return true;
+        // 方式7: 通过 sh -c
+        if (runShellCmd("sh -c 'setenforce " + state + "'")) return true;
+        // 方式8: 直接写 sysfs (root echo)
+        if (runShellCmd("echo " + state + " > /sys/fs/selinux/enforce")) return true;
+        // 方式9: 写 selinuxfs 另一个路径
+        if (runShellCmd("echo " + state + " > /selinux/enforce")) return true;
+        // 方式10: 直接执行 setenforce（某些 ROM 有权限）
+        if (runShell("setenforce", state)) return true;
+        // 方式11: nsenter 进入 init namespace 执行
+        if (runShellCmd("nsenter -t 1 -m -- setenforce " + state)) return true;
+        return false;
     }
 
     private static String getSelinuxState() {
+        // 先直接执行
         String res = runShellForOutput("getenforce");
-        if (res == null) return "";
-        return res.trim();
+        if (res != null && !res.trim().isEmpty()) return res.trim();
+        // root fallback
+        res = runShellForOutput("su", "-c", "getenforce");
+        if (res != null && !res.trim().isEmpty()) return res.trim();
+        // 读 sysfs
+        res = runShellForOutput("su", "-c", "cat /sys/fs/selinux/enforce");
+        if (res != null && !res.trim().isEmpty()) {
+            return "0".equals(res.trim()) ? "Permissive" : "Enforcing";
+        }
+        return "";
     }
 
     private static boolean runShell(String... cmd) {
@@ -351,8 +384,36 @@ public class FloatingPanel {
             Process p = new ProcessBuilder(cmd)
                     .redirectErrorStream(true)
                     .start();
-            int code = p.waitFor();
-            return code == 0;
+            // 读取输出防止缓冲区满导致卡住
+            try (InputStream is = p.getInputStream()) {
+                byte[] buf = new byte[1024];
+                while (is.read(buf) != -1) {}
+            }
+            boolean finished = p.waitFor(SHELL_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return false;
+            }
+            return p.exitValue() == 0;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static boolean runShellCmd(String fullCmd) {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", fullCmd});
+            // 读取输出防止缓冲区满导致卡住
+            try (InputStream is = p.getInputStream()) {
+                byte[] buf = new byte[1024];
+                while (is.read(buf) != -1) {}
+            }
+            boolean finished = p.waitFor(SHELL_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return false;
+            }
+            return p.exitValue() == 0;
         } catch (Exception ignored) {
             return false;
         }
@@ -371,7 +432,11 @@ public class FloatingPanel {
                     baos.write(buf, 0, n);
                 }
             }
-            p.waitFor();
+            boolean finished = p.waitFor(SHELL_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return null;
+            }
             return baos.toString();
         } catch (Exception ignored) {
             return null;
