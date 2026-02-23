@@ -46,24 +46,24 @@ public class FloatingPanel {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
         rootParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        rootParams.setMargins(24, 24, 24, 48);
+        rootParams.setMargins(12, 12, 12, 32);
 
         final LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setGravity(Gravity.CENTER_HORIZONTAL);
-        layout.setPadding(24, 20, 24, 20);
+        layout.setPadding(20, 10, 20, 10);
 
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.argb(200, 18, 18, 20));
-        bg.setCornerRadius(22f);
+        bg.setCornerRadius(16f);
         bg.setStroke(2, Color.argb(160, 90, 90, 120));
         layout.setBackground(bg);
 
         // Top breathing banner – added to DecorView at screen top
         TextView banner = new TextView(activity);
         banner.setText("tg：@USABullet520");
-        banner.setTextSize(16);
-        banner.setPadding(16, 32, 16, 8);
+        banner.setTextSize(11);
+        banner.setPadding(12, 16, 12, 4);
         banner.setGravity(Gravity.CENTER);
         banner.setTextColor(Color.parseColor("#9CE5FF"));
         GradientDrawable bannerBg = new GradientDrawable();
@@ -74,7 +74,7 @@ public class FloatingPanel {
         LinearLayout rowTop = new LinearLayout(activity);
         rowTop.setOrientation(LinearLayout.HORIZONTAL);
         rowTop.setGravity(Gravity.CENTER_VERTICAL);
-        rowTop.setPadding(0, 0, 0, 12);
+        rowTop.setPadding(0, 0, 0, 6);
 
         final Spinner pathSpinner = new Spinner(activity);
         final List<String> paths = new ArrayList<>(PRESET_PATHS);
@@ -82,7 +82,7 @@ public class FloatingPanel {
                 android.R.layout.simple_spinner_dropdown_item, paths);
         pathSpinner.setAdapter(adapter);
         LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        spLp.setMargins(0, 0, 12, 0);
+        spLp.setMargins(0, 0, 8, 0);
         pathSpinner.setLayoutParams(spLp);
 
         Button pickBtn = new Button(activity);
@@ -90,6 +90,7 @@ public class FloatingPanel {
         pickBtn.setAllCaps(false);
         pickBtn.setTextColor(Color.WHITE);
         pickBtn.setBackgroundColor(Color.parseColor("#455A8E"));
+        pickBtn.setTextSize(11);
 
         // Manual path input (kept for flexibility)
         final EditText pathInput = new EditText(activity);
@@ -97,12 +98,12 @@ public class FloatingPanel {
         pathInput.setText(DEFAULT_PATH);
         pathInput.setTextColor(Color.parseColor("#C8FACC"));
         pathInput.setHintTextColor(Color.parseColor("#88C6A0"));
-        pathInput.setTextSize(12);
+        pathInput.setTextSize(10);
         pathInput.setSingleLine(true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 0, 0, 12);
+        lp.setMargins(0, 0, 0, 6);
         pathInput.setLayoutParams(lp);
 
         pickBtn.setOnClickListener(v -> {
@@ -122,8 +123,9 @@ public class FloatingPanel {
         selinuxToggle.setText("允许切换 SELinux（仅在失败时）");
         selinuxToggle.setTextColor(Color.parseColor("#C8FACC"));
         selinuxToggle.setChecked(true);
+        selinuxToggle.setTextSize(10);
         LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        cbLp.setMargins(0, 0, 12, 0);
+        cbLp.setMargins(0, 0, 6, 0);
         selinuxToggle.setLayoutParams(cbLp);
         rowBottom.addView(selinuxToggle);
 
@@ -132,6 +134,7 @@ public class FloatingPanel {
         btn.setAllCaps(false);
         btn.setTextColor(Color.WHITE);
         btn.setBackgroundColor(Color.parseColor("#3A8FB7"));
+        btn.setTextSize(12);
         btn.setOnClickListener(v -> {
             if (!v.isEnabled()) return;
             String path = pathInput.getText().toString().trim();
